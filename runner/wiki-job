@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Queue a wiki job for wiki-runner.
+
+    wiki-job [--background] [--wait] TASK [INPUT...]
+
+    wiki-job --wait query "what is a levain?"     ask now, print the answer
+    wiki-job --background lint                    what cron runs nightly
+
+Jobs are interactive by default (they run before, and pause, background jobs).
+With --wait, prints pi's reply when the job is done; exit status 1 if it failed.
+"""
+import argparse
+import getpass
+import json
+import os
+import re
+import secrets
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(usage=__doc__.strip().split("\n")[2].strip())
+    ap.add_argument("task")
+    ap.add_argument("input", nargs="*")
+    ap.add_argument("--background", action="store_true", help="low priority; may be paused")
+    ap.add_argument("--wait", action="store_true", help="wait for the result and print it")
+    ap.add_argument("--root", type=Path, default=Path(os.environ.get("WIKI_JOBS", "/var/lib/wiki-jobs")))
+    args = ap.parse_args()
+    if not re.match(r"^[a-z0-9_-]+$", args.task):
+        ap.error(f"bad task name {args.task!r} (lowercase letters, digits, - and _)")
+
+    # Microseconds keep jobs submitted in the same second in order.
+    job_id = f"{datetime.now():%Y%m%dT%H%M%S%f}-{args.task}-{secrets.token_hex(3)}"
+    job = {
+        "task": args.task,
+        "input": " ".join(args.input),
+        "priority": "background" if args.background else "interactive",
+        "submitted": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "submitted_by": getpass.getuser(),
+    }
+    tmp = args.root / "queue" / f".{job_id}.tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    with os.fdopen(fd, "w") as f:
+        json.dump(job, f, ensure_ascii=False)
+    os.chmod(tmp, 0o644)  # the runner reads it as "other"
+    os.replace(tmp, args.root / "queue" / f"{job_id}.job")
+    print(job_id, file=sys.stderr)
+
+    if not args.wait:
+        return 0
+    result_path = args.root / "done" / f"{job_id}.json"
+    while not result_path.exists():
+        time.sleep(1)
+    result = json.loads(result_path.read_text())
+    print(result.get("reply") or result.get("error", ""))
+    if result["status"] != "ok":
+        print(f"[{result['status']}]", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

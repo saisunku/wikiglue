@@ -1,0 +1,29 @@
+# /etc/wikiglue/wikiglue.toml (see src/wikiglue/config.py)
+
+vault = "/srv/wiki/vault"            # bind-mounted by the systemd drop-in
+state_dir = "/var/lib/wikiglue"
+jobs_dir = "/var/lib/wiki-jobs"      # wiki-runner's queue
+
+[karakeep]
+url = "http://127.0.0.1:3000"
+
+[model]                              # llama.cpp servers, for routing plain chat messages:
+urls = ["http://127.0.0.1:8080"]     # the first that answers
+
+[matrix]
+homeserver = "http://127.0.0.1:8008"
+user_id = "@wiki:chat.example.org"
+access_token_file = "/etc/wikiglue/matrix_token"
+
+[users.alex]
+name = "Alex"
+role = "admin"
+matrix = "@alex:chat.example.org"
+karakeep_key_file = "/etc/wikiglue/karakeep/alex.key"   # the user's own Karakeep API key
+maildir = "/var/lib/wikimail/alex/Family Wiki"          # their "Family Wiki" Gmail label (mail.py)
+emails = ["alex@example.com"]                           # addresses they send from (shared mailboxes)
+
+[mailboxes.familywiki]                 # an address anyone can send to; only family's mail is used
+address = "familywiki@example.org"
+maildir = "/var/lib/wikimail/familywiki/INBOX"
+auth_server = "mx.zohomail.com"        # whose Authentication-Results header to trust

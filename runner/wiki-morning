@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""The morning message: the model checks each upcoming trip on its own, then writes the message.
+
+    wiki-morning <vault>      (run by run-task.sh for _tasks/morning.md, `script: wiki-morning`)
+
+1. Trips under way or starting within 90 days (front matter `start`/`end` in wiki/trips/).
+2. For each, one `trip-check` job (_tasks/trip-check.md) given the page and every night of the
+   trip, so the model judges one trip at a time. Only its `- no ...` lines are kept; an empty or
+   cut-off answer is retried once, then reported as not checked.
+3. One `morning-message` job (_tasks/morning-message.md) writes the message from the to-dos,
+   credits and needs, with a TRIPS line where the trip results go.
+
+No judgement here: dates and plumbing only. Transcripts go under $PI_SESSION_DIR/<step>.
+Stdlib only.
+"""
+import os
+import re
+import subprocess
+import sys
+from datetime import date, timedelta
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+FRONT = re.compile(r"^---\n(.*?)\n---\n", re.S)
+TRIP_DAYS = 90
+
+
+def nice(d: date) -> str:
+    return f"{d:%a} {d.day} {d:%b}"
+
+
+def front(text: str) -> dict:
+    m = FRONT.match(text)
+    return dict(re.findall(r"^([A-Za-z0-9_-]+):\s*[\"']?(.*?)[\"']?\s*$", m.group(1), re.M)) if m else {}
+
+
+def upcoming_trips(vault: Path, today: date):
+    for p in sorted((vault / "wiki" / "trips").glob("*.md")):
+        meta = front(p.read_text(errors="replace"))
+        try:
+            start, end = date.fromisoformat(meta["start"][:10]), date.fromisoformat(meta["end"][:10])
+        except (KeyError, ValueError):
+            continue
+        if meta.get("type") == "redirect" or end < today or start > today + timedelta(TRIP_DAYS):
+            continue
+        yield p, meta.get("title") or p.stem, start, end
+
+
+def run_task(vault: Path, task: str, text: str, step: str) -> str:
+    env = dict(os.environ)
+    if base := os.environ.get("PI_SESSION_DIR"):
+        env["PI_SESSION_DIR"] = f"{base}/{step}"
+    r = subprocess.run([str(HERE / "run-task.sh"), str(vault), task, text],
+                       capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def check_trip(vault: Path, path: Path, title: str, start: date, end: date) -> str | None:
+    """The trip's gaps as '- no ...' lines, '' if none, None if the model gave no answer."""
+    nights = [start + timedelta(i) for i in range((end - start).days)]
+    text = (f"wiki/trips/{path.name} ({title}, {nice(start)} – {nice(end)} {end.year}). "
+            f"Nights: {', '.join(map(nice, nights)) or 'none (a day trip)'}")
+    for attempt in (1, 2):
+        reply = run_task(vault, "trip-check", text, f"{path.stem}-{attempt}")
+        lines = [l.strip().strip("`") for l in reply.splitlines()]
+        gaps = [l for l in lines if l.startswith("- no ")]
+        if gaps:
+            return "\n".join(gaps)
+        if any(l == "OK" for l in lines):
+            return ""
+    return None
+
+
+NIGHT = re.compile(r"^- no lodging the night of (\w{3} \d{1,2} \w{3})(?: in (.+))?$")
+
+
+def merge_nights(gaps: str, start: date, end: date) -> list[str]:
+    """'- no ...' lines without the dash, with runs of missing nights in one place as one line."""
+    by_name = {nice(start + timedelta(i)): start + timedelta(i) for i in range((end - start).days)}
+    out, run = [], []   # run: [(night, place)] of consecutive missing nights in the same place
+
+    def flush():
+        if len(run) > 1:
+            out.append(f"no lodging the nights of {nice(run[0][0])} – {nice(run[-1][0])}"
+                       + (f" in {run[0][1]}" if run[0][1] else ""))
+        elif run:
+            out.append(f"no lodging the night of {nice(run[0][0])}" + (f" in {run[0][1]}" if run[0][1] else ""))
+        run.clear()
+
+    for line in gaps.splitlines():
+        m = NIGHT.match(line)
+        night = by_name.get(m.group(1)) if m else None
+        if night is None:
+            flush()
+            out.append(line.removeprefix("- "))
+            continue
+        if run and (night - run[-1][0] != timedelta(1) or m.group(2) != run[-1][1]):
+            flush()
+        run.append((night, m.group(2)))
+    flush()
+    return out
+
+
+def main() -> int:
+    vault = Path(sys.argv[1])
+    today = date.today()
+    results = []
+    for path, title, start, end in upcoming_trips(vault, today):
+        gaps = check_trip(vault, path, title, start, end)
+        if gaps is None:
+            results.append(f"- {title}, {nice(start)}–{nice(end)}: couldn't check it this morning")
+        elif gaps:
+            results.append(f"- {title}, {nice(start)}–{nice(end)}:\n"
+                           + "\n".join("  " + g for g in merge_nights(gaps, start, end)))
+    trips = "\n".join(results) or "Nothing."
+    message = run_task(vault, "morning-message", "", "message")
+    if not message:
+        message = "**To do**\n(couldn't write the rest of the message this morning)\n\n**Trips to finish booking**\nTRIPS"
+    if re.search(r"^\s*TRIPS\s*$", message, re.M):
+        message = re.sub(r"^\s*TRIPS\s*$", lambda _: trips, message, count=1, flags=re.M)
+    else:
+        message += f"\n\n**Trips to finish booking**\n{trips}"
+    # A blank line before each heading, whatever the model or the trip lines left.
+    message = re.sub(r"\n+(\*\*[^*\n]+\*\*)\n", r"\n\n\1\n", message).strip()
+    print(message)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

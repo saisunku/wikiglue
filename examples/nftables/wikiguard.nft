@@ -1,0 +1,102 @@
+#!/usr/sbin/nft -f
+# Egress rules for everything that touches untrusted content or the model.
+# Loaded by wikiguard-nft.service into its own table, so Docker's and
+# Tailscale's rules are left alone (no "flush ruleset").
+#
+#   wikibot      pi, reads untrusted sources  -> may only reach the llama.cpp servers
+#                                                (127.0.0.1:8080 here; list any others below)
+#   llm          llama-server                 -> loopback only
+#   wikisite     site build + static server   -> loopback only
+#   wikimail     mbsync, one Gmail label      -> DNS (local stub) and IMAPS (993) only
+#   caddy        tailnet web server           -> loopback, and replies to tailnet clients
+#   acme         certificate renewal (lego)   -> DNS and HTTPS (Let's Encrypt, the DNS host's API) only
+#   br-karakeep  Karakeep's crawler network   -> public internet only: not this host,
+#                                                the LAN or the tailnet (fetching a URL
+#                                                someone shared must not reach them)
+#   wikimetrics  Alloy (metrics dashboard)     -> loopback only
+#   br-metrics   Loki, Prometheus, Grafana     -> nothing outside their own network
+#                                                (replies to Caddy and Alloy only)
+#
+# Drops are logged (rate-limited) with the prefix "wikiguard-drop":
+#   journalctl -k -g wikiguard-drop
+
+table inet wikiguard
+delete table inet wikiguard
+
+table inet wikiguard {
+  chain output {
+    type filter hook output priority filter; policy accept;
+
+    # The llama.cpp servers wikibot may use, as address . port (one per server in
+    # runner/pi-home/models.json), e.g. { 127.0.0.1 . 8080, 100.64.0.2 . 8080 }.
+    meta skuid "wikibot" ip daddr . tcp dport { 127.0.0.1 . 8080 } accept
+    meta skuid "wikibot" limit rate 10/minute log prefix "wikiguard-drop wikibot: " level warn
+    meta skuid "wikibot" drop
+
+    meta skuid "llm" oifname "lo" accept
+    meta skuid "llm" limit rate 10/minute log prefix "wikiguard-drop llm: " level warn
+    meta skuid "llm" drop
+
+    meta skuid "wikisite" oifname "lo" accept
+    meta skuid "wikisite" limit rate 10/minute log prefix "wikiguard-drop wikisite: " level warn
+    meta skuid "wikisite" drop
+
+    meta skuid "wikimail" oifname "lo" udp dport 53 accept
+    meta skuid "wikimail" oifname "lo" tcp dport 53 accept
+    meta skuid "wikimail" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } limit rate 10/minute log prefix "wikiguard-drop wikimail: " level warn
+    meta skuid "wikimail" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } drop
+    meta skuid "wikimail" tcp dport 993 accept
+    meta skuid "wikimail" limit rate 10/minute log prefix "wikiguard-drop wikimail: " level warn
+    meta skuid "wikimail" drop
+
+    meta skuid "caddy" oifname "lo" accept
+    meta skuid "caddy" ct state established,related accept
+    meta skuid "caddy" limit rate 10/minute log prefix "wikiguard-drop caddy: " level warn
+    meta skuid "caddy" drop
+
+    meta skuid "acme" oifname "lo" udp dport 53 accept
+    meta skuid "acme" oifname "lo" tcp dport 53 accept
+    meta skuid "acme" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } limit rate 10/minute log prefix "wikiguard-drop acme: " level warn
+    meta skuid "acme" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } drop
+    # 53: lego asks the DNS host's nameservers directly whether the TXT record is live.
+    meta skuid "acme" udp dport 53 accept
+    meta skuid "acme" tcp dport { 53, 443 } accept
+    meta skuid "acme" limit rate 10/minute log prefix "wikiguard-drop acme: " level warn
+    meta skuid "acme" drop
+
+    meta skuid "wikimetrics" oifname "lo" accept
+    meta skuid "wikimetrics" limit rate 10/minute log prefix "wikiguard-drop wikimetrics: " level warn
+    meta skuid "wikimetrics" drop
+  }
+
+  # Crawler -> this host (e.g. ssh, RDP, llama-server via the bridge address).
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "br-karakeep" ct state established,related accept
+    # Broadcast/multicast (including this host's own SSDP and discovery chatter): drop quietly.
+    iifname "br-karakeep" fib daddr type { broadcast, multicast } drop
+    iifname "br-karakeep" limit rate 10/minute log prefix "wikiguard-drop karakeep-host: " level warn
+    iifname "br-karakeep" drop
+
+    # Metrics containers -> this host: only replies (to Caddy and Alloy via the published ports).
+    iifname "br-metrics" ct state established,related accept
+    iifname "br-metrics" fib daddr type { broadcast, multicast } drop
+    iifname "br-metrics" limit rate 10/minute log prefix "wikiguard-drop metrics-host: " level warn
+    iifname "br-metrics" drop
+  }
+
+  # Crawler -> private networks (LAN, tailnet, link-local). Traffic between the
+  # containers on the same bridge is allowed.
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname "br-karakeep" oifname "br-karakeep" accept
+    iifname "br-karakeep" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } limit rate 10/minute log prefix "wikiguard-drop karakeep-lan: " level warn
+    iifname "br-karakeep" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } drop
+    iifname "br-karakeep" meta nfproto ipv6 drop
+
+    # Metrics containers: between themselves only; nothing goes out.
+    iifname "br-metrics" oifname "br-metrics" accept
+    iifname "br-metrics" limit rate 10/minute log prefix "wikiguard-drop metrics-out: " level warn
+    iifname "br-metrics" drop
+  }
+}

@@ -1,0 +1,65 @@
+[Unit]
+Description=llama.cpp server (Ornith-1.5 35B-A3B, Vulkan, loopback only)
+# nftables keeps the llm user on loopback even if this unit's own filter is changed.
+Requires=wikiguard-nft.service
+After=network.target wikiguard-nft.service
+
+[Service]
+User=llm
+Group=llm
+SupplementaryGroups=render video
+# An example for one AMD card (RX 7900 XTX, Vulkan) and a 35B-A3B MoE model with vision;
+# change the model, device and power cap for your hardware.
+# Two slots sharing one KV pool: one pi job (pi caps itself at 32k, see
+# runner/pi-home/models.json) plus wikiglue's chat routing, which runs alongside
+# a job instead of waiting behind it (src/wikiglue/router.py).
+# No --n-gpu-layers: llama.cpp's --fit (on by default) puts everything on the GPU when it
+# fits (it does, with the desktop on the iGPU) and moves expert layers to RAM if not.
+ExecStart=/opt/llama.cpp/current/llama-server \
+    --model /var/lib/llm/models/Ornith-1.5-35B-A3B-Q4_K_M.gguf \
+    --mmproj /var/lib/llm/models/mmproj-Ornith-1.5-35B-A3B-f16.gguf \
+    --alias ornith-1.5-35b-a3b \
+    --device Vulkan0 \
+    --ctx-size 36864 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 \
+    --parallel 2 --kv-unified --jinja \
+    --host 127.0.0.1 --port 8080 \
+    --offline --no-webui --no-webui-mcp-proxy --metrics
+Restart=on-failure
+RestartSec=5
+
+# Show Vulkan only the RX 7900 XTX (PCI 1002:744c). With the iGPU as the
+# BIOS primary display it enumerates first, and "Vulkan0" alone loaded the
+# model into system RAM on the iGPU.
+Environment=MESA_VK_DEVICE_SELECT=1002:744c
+Environment=MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE=1
+# Mesa's shader cache would otherwise go to $HOME.
+Environment=MESA_SHADER_CACHE_DIR=/var/cache/llm
+CacheDirectory=llm
+
+# Network: loopback only. The model server never needs the internet.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Filesystem: read-only everywhere except its cache; models are read-only.
+ProtectSystem=strict
+ProtectHome=yes
+ReadOnlyPaths=/var/lib/llm/models
+PrivateTmp=yes
+
+# GPU access only.
+DevicePolicy=closed
+DeviceAllow=/dev/dri rw
+DeviceAllow=char-drm rw
+
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

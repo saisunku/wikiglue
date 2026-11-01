@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Write <vault>/wiki/index.md from the template <vault>/_config/index.md.
+
+    wiki-index [--print] [--fix-raw-links] <vault>
+
+The template is copied as is, except lines like
+
+    <!-- pages: trips/ end>=today sort=start -->
+
+which become one line per matching wiki page: `- [[path|title]] — summary`, from
+each page's front matter (`title:`, `summary:`). The words after "pages:" are:
+
+    trips/            pages under wiki/trips/ (any number of folders; no folder: all pages)
+    key=a,b           front matter `key` is a or b; for lists (tags), contains a or b
+    key!=a            not a (pages without `key` match)
+    key>=today        compare (also > < <=) with a value or `today`; dates compare as text
+    sort=key          order by `key` (default title); sort=-key for descending
+    rest              every page no other `pages:` line in the template matched
+
+wiki/index.md, wiki/log.md and pages with `type: redirect` (merged into another page by
+lint) are never listed. The file is only rewritten when
+its content changes. wiki-runner runs this after jobs and when pages change.
+
+With --fix-raw-links it first repairs links into raw/ on wiki pages that point at nothing,
+such as a source's folder (`[[raw/2026/10/<slug>|original]]`) or a folder without its
+year and month (`[[raw/<slug>]]`): raw folder names are unique, so each has one right
+target, `raw/YYYY/MM/<slug>/source` (or the named file in that folder, if it exists).
+wiki-runner passes it only while no job is running. Stdlib only.
+"""
+import argparse
+import os
+import re
+import sys
+from datetime import date
+from pathlib import Path
+
+TEMPLATE = Path("_config") / "index.md"
+OUT = Path("wiki") / "index.md"
+SKIP = {"index.md", "log.md"}
+DIRECTIVE = re.compile(r"^\s*<!--\s*pages:(.*?)-->\s*$")
+CONDITION = re.compile(r"^([A-Za-z0-9_-]+)(!=|>=|<=|=|>|<)(.*)$")
+FRONT = re.compile(r"^---\n(.*?)\n---\n", re.S)
+NOTE = "<!-- Generated from _config/index.md by wiki-index: edit that file, not this one. -->"
+
+
+def front_matter(text: str) -> dict:
+    """Flat `key: value` front matter; `[a, b]` values become lists."""
+    m = FRONT.match(text)
+    data = {}
+    for line in (m.group(1).splitlines() if m else []):
+        kv = re.match(r"^([A-Za-z0-9_-]+):\s*(.*?)\s*$", line)
+        if not kv:
+            continue
+        key, value = kv.groups()
+        value = re.sub(r"\s+#.*$", "", value) if not value.startswith(('"', "'")) else value
+        if value.startswith("[") and value.endswith("]"):
+            data[key] = [unquote(v) for v in value[1:-1].split(",") if v.strip()]
+        else:
+            data[key] = unquote(value)
+    if not data.get("title"):
+        h = re.search(r"^# (.+)$", text, re.M)
+        if h:
+            data["title"] = h.group(1).strip()
+    return data
+
+
+def unquote(v: str) -> str:
+    v = v.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        return v[1:-1].replace('\\"', '"')
+    return v
+
+
+def pages(vault: Path) -> list[dict]:
+    out = []
+    wiki = vault / "wiki"
+    for p in sorted(wiki.rglob("*.md")):
+        rel = p.relative_to(wiki)
+        if rel.as_posix() in SKIP or any(part.startswith(".") for part in rel.parts):
+            continue
+        try:
+            meta = front_matter(p.read_text(errors="replace"))
+        except OSError:
+            continue
+        if meta.get("type") == "redirect":
+            continue
+        meta["path"] = rel.with_suffix("").as_posix()
+        meta.setdefault("title", rel.stem)
+        out.append(meta)
+    return out
+
+
+def matches(page: dict, folders: list[str], conds: list[tuple[str, str, str]]) -> bool:
+    if folders and not any(page["path"].startswith(f) for f in folders):
+        return False
+    for key, op, want in conds:
+        have = page.get(key)
+        if op in ("=", "!="):
+            values = have if isinstance(have, list) else [have] if have else []
+            hit = bool(set(values) & set(want.split(",")))
+            if hit != (op == "="):
+                return False
+        else:
+            if not isinstance(have, str) or not have:
+                return False
+            if not {"<": have < want, "<=": have <= want, ">": have > want, ">=": have >= want}[op]:
+                return False
+    return True
+
+
+def parse(args: str, today: str):
+    folders, conds, sort, rest = [], [], "title", False
+    for word in args.split():
+        if word == "rest":
+            rest = True
+        elif word.startswith("sort="):
+            sort = word[5:]
+        elif (m := CONDITION.match(word)):
+            key, op, value = m.groups()
+            conds.append((key, op, today if value == "today" else value))
+        else:
+            folders.append(word.strip("/") + "/")
+    return folders, conds, sort, rest
+
+
+def line(page: dict) -> str:
+    title = str(page["title"]).replace("|", "–").replace("]]", "")
+    summary = page.get("summary")
+    summary = " ".join(summary) if isinstance(summary, list) else summary
+    return f"- [[{page['path']}|{title}]]" + (f" — {summary}" if summary else "")
+
+
+def render(vault: Path, today: str | None = None) -> str:
+    today = today or date.today().isoformat()
+    template = (vault / TEMPLATE).read_text()
+    all_pages = pages(vault)
+    lines = template.splitlines()
+    picked: dict[int, list[dict]] = {}
+    used: set[str] = set()
+    rest_at = []
+    for i, text in enumerate(lines):
+        m = DIRECTIVE.match(text)
+        if not m:
+            continue
+        folders, conds, sort, rest = parse(m.group(1), today)
+        if rest:
+            rest_at.append((i, sort))
+            continue
+        hits = [p for p in all_pages if matches(p, folders, conds)]
+        picked[i] = order(hits, sort)
+        used |= {p["path"] for p in hits}
+    for i, sort in rest_at:
+        picked[i] = order([p for p in all_pages if p["path"] not in used], sort)
+
+    out, comment = [], False
+    for i, text in enumerate(lines):
+        # A comment block on lines of its own (the template's notes) stays in the template.
+        if text.strip() == "<!--":
+            comment = True
+        if comment:
+            comment = text.strip() != "-->"
+            continue
+        if i in picked:
+            out += [line(p) for p in picked[i]] or ["_None yet._"]
+        else:
+            out.append(text)
+    body = re.sub(r"\n{3,}", "\n\n", "\n".join(out) + "\n")
+    m = FRONT.match(body)
+    return body[:m.end()] + NOTE + "\n" + body[m.end():] if m else NOTE + "\n" + body
+
+
+def order(hits: list[dict], sort: str) -> list[dict]:
+    desc = sort.startswith("-")
+    key = sort.lstrip("-")
+    def k(p):
+        v = p.get(key, "")
+        return str(v[0] if isinstance(v, list) and v else v or "").lower()
+    # Pages without the sort key go last either way.
+    have = sorted([p for p in hits if k(p)], key=k, reverse=desc)
+    return have + sorted([p for p in hits if not k(p)], key=lambda p: p["title"].lower())
+
+
+RAW_LINK = re.compile(r"(?<!!)\[\[(raw/[^\]|#]+)([^\]]*)\]\]")
+
+
+def raw_folders(vault: Path) -> dict[str, Path]:
+    """Source folder name -> its path relative to the vault (raw/YYYY/MM/<name>)."""
+    return {d.name: d.relative_to(vault) for d in (vault / "raw").glob("*/*/*") if d.is_dir()}
+
+
+def raw_target(vault: Path, link: str, folders: dict[str, Path]) -> str | None:
+    """The right target for a broken raw/ link, or None if it's fine or can't be told."""
+    if (vault / link).is_file() or (vault / f"{link}.md").is_file():
+        return None
+    parts = link.strip("/").split("/")[1:]
+    for i, name in enumerate(parts):
+        folder = folders.get(name)
+        if folder is None:   # a slug written without its date prefix: one folder ends with it
+            ends = [f for n, f in folders.items() if n.endswith(f"-{name}")]
+            folder = ends[0] if len(ends) == 1 else None
+        if folder is None:
+            continue
+        rest = "/".join(p for p in parts[i + 1:] if p)
+        if rest and ((vault / folder / rest).is_file() or (vault / folder / f"{rest}.md").is_file()):
+            return f"{folder.as_posix()}/{rest}"
+        if (vault / folder / "source.md").is_file():
+            return f"{folder.as_posix()}/source"
+        return None
+    return None
+
+
+def fix_raw_links(vault: Path) -> list[str]:
+    """Repair broken [[raw/...]] links in wiki/ pages; returns "page: old -> new" lines."""
+    folders, changes = raw_folders(vault), []
+    for p in sorted((vault / "wiki").rglob("*.md")):
+        try:
+            text = p.read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        def repl(m: re.Match) -> str:
+            new = raw_target(vault, m.group(1), folders)
+            if new is None:
+                return m.group(0)
+            changes.append(f"{p.relative_to(vault)}: {m.group(1)} -> {new}")
+            return f"[[{new}{m.group(2)}]]"
+        fixed = RAW_LINK.sub(repl, text)
+        if fixed != text:
+            tmp = p.with_name(f".{p.name}.tmp")
+            tmp.write_text(fixed)
+            os.replace(tmp, p)
+    return changes
+
+
+def write(vault: Path) -> bool:
+    """Rewrite wiki/index.md if it changed; True if it did."""
+    if not (vault / TEMPLATE).is_file():
+        return False
+    text = render(vault)
+    out = vault / OUT
+    try:
+        if out.read_text() == text:
+            return False
+    except OSError:
+        pass
+    tmp = out.with_name(".index.md.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, out)
+    return True
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("vault", type=Path)
+    ap.add_argument("--print", action="store_true", help="print the index instead of writing it")
+    ap.add_argument("--fix-raw-links", action="store_true", help="first repair broken [[raw/...]] links")
+    args = ap.parse_args()
+    if not (args.vault / TEMPLATE).is_file():
+        print(f"no template at {args.vault / TEMPLATE}", file=sys.stderr)
+        return 1
+    if args.fix_raw_links and not args.print:
+        for change in fix_raw_links(args.vault):
+            print(f"fixed link {change}", file=sys.stderr)
+    if args.print:
+        print(render(args.vault), end="")
+    else:
+        print("updated" if write(args.vault) else "unchanged")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

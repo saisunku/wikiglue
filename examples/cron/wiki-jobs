@@ -1,0 +1,12 @@
+# Wiki schedules (installed as /etc/cron.d/wiki-jobs). Each line only queues a job;
+# wiki-runner runs it after any interactive (chat/ingest) jobs, and pauses it when
+# one arrives. Runs missed while the desktop is off are skipped, not caught up.
+# To add one: write <vault>/_tasks/<name>.md and add a line here, then rerun setup.
+SHELL=/bin/sh
+PATH=/usr/bin:/bin
+
+# m  h   dom mon dow  user     command
+0    2   *   *   *    wikibot  /opt/wiki-runner/wiki-job --background lint     2>&1 | logger -t wiki-job
+0    6   *   *   *    wikibot  /opt/wiki-runner/wiki-job --background morning  2>&1 | logger -t wiki-job
+0    9   *   *   6    wikibot  /opt/wiki-runner/wiki-job --background shopping 2>&1 | logger -t wiki-job
+0    18  *   *   0    wikibot  /opt/wiki-runner/wiki-job --background digest   2>&1 | logger -t wiki-job

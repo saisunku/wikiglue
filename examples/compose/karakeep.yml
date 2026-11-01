@@ -1,0 +1,53 @@
+# Karakeep (bookmarks, share sheet, browser extension, crawler) for the wiki.
+# Based on upstream docker/docker-compose.yml.
+# The web app is published on 127.0.0.1 only; a reverse proxy (Caddy here) is the
+# only way in. AI features are off (no inference provider configured).
+name: wiki-karakeep
+
+services:
+  web:
+    image: ghcr.io/karakeep-app/karakeep:0.34.1
+    restart: unless-stopped
+    env_file: /etc/karakeep/karakeep.env
+    environment:
+      DATA_DIR: /data
+      MEILI_ADDR: http://meilisearch:7700
+      BROWSER_WEB_URL: http://chrome:9222
+      OCR_CACHE_DIR: /data/ocr-cache
+    volumes:
+      - /var/lib/karakeep/data:/data
+    ports:
+      - "127.0.0.1:3000:3000"
+    # `crawl` reaches the internet (and Chrome); `internal` reaches Meilisearch only.
+    networks: [crawl, internal]
+
+  chrome:
+    image: ghcr.io/karakeep-app/karakeep-chrome:156.0.8078.47-r1
+    restart: unless-stopped
+    init: true
+    command:
+      - --disable-gpu
+      - --disable-dev-shm-usage
+      - --hide-scrollbars
+      - --disable-blink-features=AutomationControlled
+      - --window-size=1440,900
+    networks: [crawl]
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.41.0
+    restart: unless-stopped
+    env_file: /etc/karakeep/karakeep.env
+    environment:
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - /var/lib/karakeep/meili:/meili_data
+    networks: [internal]
+
+networks:
+  internal:
+    internal: true
+  # Fixed bridge name so examples/nftables/wikiguard.nft can keep the crawler away
+  # from this host, the LAN and the tailnet (it may only reach the public internet).
+  crawl:
+    driver_opts:
+      com.docker.network.bridge.name: br-karakeep

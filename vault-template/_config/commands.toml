@@ -1,0 +1,98 @@
+# Chat commands for the @wiki bot. Edit freely; wikiglue reloads on save.
+#
+# A message that starts with a command's prefix (case-insensitive, longest
+# first; default "<name>:") runs that command without the model.
+#
+# Any other plain message is routed by the local model (route = true): from its
+# first 100 words it picks the commands whose `description` fits, plus items
+# for append/pantry ("eggs", "butter: out"). Write descriptions for the model.
+# Commands without a description, and admin-only ones, are never picked.
+#
+# actions:
+#   append   add a line to a vault file (one per item when routed)
+#   pantry   set items to out / low / ok in a pantry table; typed, lists what's low
+#   task     run _tasks/<x>.md with the whole message (pi runs the task)
+#   bookmark save to Karakeep → ingest into the wiki (links and photos always are)
+#   builtin  ping | help | approve | requests | announce | queue
+#
+# roles: "admin" (whoever runs the wiki) and/or "member" (everyone else). Omit for everyone.
+
+# Scheduled tasks whose results are posted to the room picked with "announce".
+announce = ["shopping", "digest", "morning"]
+
+# Let the model pick a command for plain messages. false: they all go to [default].
+route = true
+
+[commands.need]
+description = "Add things to the shopping or grocery list. items: what to buy, with any quantity (\"grab 2 lemons\" → \"2 lemons\")."
+action = "append"
+file   = "lists/needs.md"
+format = "- [ ] {text} — {sender}, {date}"
+reply  = "Added to needs ✓"
+
+[commands.pantry]           # typed "pantry": what's low or out
+prefix = "pantry"
+description = "Report how stocked a household staple is: out of it, running low, or restocked/bought. items: each staple with its status (out, low, ok)."
+action = "pantry"
+file   = "lists/pantry.md"
+
+[commands.trip]             # "trip: day 3 in Kyoto, Nishiki market for lunch"
+description = "Plans, ideas, to-dos or details for a family trip (places to visit, restaurants, what to book or pack), sent as text, to add to the trip page. Not questions about a trip."
+action = "task"
+task   = "_tasks/trip.md"
+format = "{text} ({sender}, {date})"
+reply  = "result"
+
+[commands.summary]          # "summary: Kitchen remodel [[sources/a]] [[sources/b]]"
+description = "Asks for a summary page built from a chosen set of saved sources (emails, PDFs, articles), named or described in the message, or to rebuild a summary page by its title."
+action = "task"
+task   = "_tasks/summary.md"
+reply  = "result"
+
+[commands."?"]
+prefix = "?"
+action = "task"
+task   = "_tasks/query.md"
+reply  = "result"
+
+[commands.approve]
+prefix = "approve "
+action = "builtin"
+roles  = ["admin"]
+
+[commands.requests]          # list open research requests, numbered for "approve N"
+prefix = "requests"
+description = "Asks to see the open research requests."
+action = "builtin"
+
+[commands.queue]             # what the wiki agent is working on
+prefix = "queue"
+description = "Asks what the wiki bot is busy with right now."
+action = "builtin"
+
+[commands.announce]          # post shopping lists and digests in this room
+prefix = "announce"
+action = "builtin"
+roles  = ["admin"]
+
+[commands.ping]
+prefix = "ping"
+action = "builtin"
+
+[commands.help]
+prefix = "help"
+action = "builtin"
+
+[commands.note]             # "note: grandma says rest the dough overnight"
+description = "Save a fact, tip, memory or note to the wiki for later (not a question, not a shopping item)."
+action = "bookmark"
+
+# Plain messages the model doesn't route elsewhere (or all of them with
+# route = false) are questions for the wiki. Messages that start with a link, and
+# every photo or PDF, are always saved to Karakeep as the sender, then copied
+# into raw/ and ingested.
+[default]
+description = "A question about anything in the family wiki (recipes, notes, saved articles, plans), or anything that doesn't clearly fit another command."
+action = "task"
+task   = "_tasks/query.md"
+reply  = "result"

@@ -1,0 +1,416 @@
+#!/usr/bin/env python3
+"""Run wiki jobs from a folder queue, one at a time, interactive jobs first.
+
+    <root>/queue/<id>.job     JSON written by wiki-job, wikiglue or cron (via wiki-job)
+    <root>/running/           the current (and any paused) job, private to the runner
+    <root>/done/<id>.json     the job plus status and pi's reply, for wikiglue to post
+    <root>/transcripts/<id>/  pi's session for the job (kept as long as done/ files)
+    <root>/status.json        what's running, paused and waiting (for wikiglue's `queue`)
+
+A job only names a task (<vault>/_tasks/<task>.md) and its input; it can't name a
+command. A task's front matter may set `time-limit-minutes:` (default 30).
+Jobs run by priority, then in arrival order: "chat" (questions and notes sent
+in chat), then "interactive" (ingests, wiki-job), then "background" (lint,
+shopping, digest). When a job arrives with a higher priority than the running
+one, the running job is paused (SIGSTOP): chat pauses an ingest or lint, an
+ingest pauses lint. A paused job is resumed (SIGCONT) before any job of its own
+priority or lower starts, so it isn't overtaken by jobs that arrived after it.
+Paused time doesn't count towards the job's time limit. Pausing is safe for the
+vault because existing pages change only through `edit`, which fails if the
+text it replaces has changed meanwhile (see no-overwrite.ts).
+
+Each job runs on the first llama.cpp server that answers: the providers in pi's
+models.json, in order (one per llama.cpp server). Jobs wait while none do.
+
+After each job, and whenever a wiki page or _config/index.md changes, it
+rebuilds wiki/index.md with wiki-index (next to this script), which also repairs broken
+links into raw/ while no job is running.
+
+SIGHUP (systemctl reload wiki-runner) loads new code without losing work: the
+runner finishes the current job, starts nothing new, then re-executes itself.
+
+Runs as wikibot inside wiki-runner.service; stdlib only.
+"""
+import argparse
+import json
+import logging
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+TASK_RE = re.compile(r"^[a-z0-9_-]+$")
+PRIORITY = {"chat": 0, "interactive": 1, "background": 2}
+MAX_INPUT = 8000
+MAX_REPLY = 20000
+MAX_ATTEMPTS = 2  # a job interrupted by a crash or reboot is retried once
+POLL_SECONDS = 1.0
+DEFAULT_TIME_LIMIT = 30 * 60
+KEEP_DONE_DAYS = 14
+INDEX_CHECK_SECONDS = 10
+
+log = logging.getLogger("wiki-runner")
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def model_servers() -> list[tuple[str, str]]:
+    """(pi provider, health URL) per llama.cpp server, first choice first."""
+    home = Path(os.environ.get("PI_CODING_AGENT_DIR", Path(__file__).resolve().with_name("pi-home")))
+    providers = json.loads((home / "models.json").read_text())["providers"]
+    return [(name, p["baseUrl"].rstrip("/").removesuffix("/v1") + "/health")
+            for name, p in providers.items()]
+
+
+def first_ready(servers: list[tuple[str, str]]) -> str | None:
+    """The first server whose llama-server is up (it answers 503 while loading the model)."""
+    for name, url in servers:
+        try:
+            with urllib.request.urlopen(url, timeout=3) as r:
+                if r.status == 200:
+                    return name
+        except OSError:
+            pass
+    return None
+
+
+def write_json(path: Path, data: dict, mode: int = 0o640) -> None:
+    """Atomically write data to path (readers never see a partial file)."""
+    tmp = path.with_name(f".{path.name}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+
+
+@dataclass
+class Job:
+    data: dict
+    proc: subprocess.Popen
+    out: Path
+    started: float = field(default_factory=time.monotonic)
+    resumed: float = field(default_factory=time.monotonic)
+    time_limit: float = DEFAULT_TIME_LIMIT  # seconds of running, not counting pauses
+    active: float = 0.0  # seconds run before the last pause
+    paused: bool = False
+
+    @property
+    def id(self) -> str:
+        return self.data["id"]
+
+    @property
+    def rank(self) -> int:
+        return PRIORITY[self.data["priority"]]
+
+    def active_seconds(self) -> float:
+        return self.active + (0 if self.paused else time.monotonic() - self.resumed)
+
+    def signal(self, sig: int) -> None:
+        try:
+            os.killpg(self.proc.pid, sig)
+        except ProcessLookupError:
+            pass
+
+    def pause(self) -> None:
+        self.signal(signal.SIGSTOP)
+        self.active += time.monotonic() - self.resumed
+        self.paused = True
+
+    def resume(self) -> None:
+        self.signal(signal.SIGCONT)
+        self.resumed = time.monotonic()
+        self.paused = False
+
+
+class Runner:
+    def __init__(self, root: Path, vault: Path, run_task: Path):
+        self.queue, self.running, self.done = root / "queue", root / "running", root / "done"
+        self.transcripts = root / "transcripts"
+        self.vault, self.run_task = vault, run_task
+        self.current: Job | None = None
+        self.paused: list[Job] = []
+        self.stopping = False
+        self.last_prune = 0.0
+        self.last_status: dict | None = None
+        self.reload_requested = False
+        self.waiting_for_model = False
+        self.servers = model_servers()
+        self.server: str | None = None   # the server the last job started on
+        self.index_tool = Path(__file__).resolve().with_name("wiki-index")
+        self.last_index_check = 0.0
+        self.index_built_for = -1.0   # newest page/template mtime the index was built from
+
+    # --- queue -----------------------------------------------------------
+
+    def waiting(self) -> list[tuple[int, str, Path]]:
+        """Queued jobs, best first: (priority, file name, path)."""
+        jobs = []
+        for p in self.queue.glob("*.job"):
+            if p.name.startswith("."):
+                continue
+            try:
+                prio = PRIORITY.get(json.loads(p.read_text()).get("priority"), PRIORITY["interactive"])
+            except (OSError, ValueError, AttributeError):
+                prio = 0  # bad file: take it next so it gets rejected and cleared
+            jobs.append((prio, p.name, p))
+        return sorted(jobs)
+
+    def validate(self, path: Path) -> dict:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError("job is not a JSON object")
+        task, inp = data.get("task"), data.get("input", "")
+        if not isinstance(task, str) or not TASK_RE.match(task):
+            raise ValueError(f"bad task name {task!r}")
+        if not (self.vault / "_tasks" / f"{task}.md").is_file():
+            raise ValueError(f"no such task: _tasks/{task}.md")
+        if not isinstance(inp, str) or len(inp) > MAX_INPUT:
+            raise ValueError("input must be a string of at most %d characters" % MAX_INPUT)
+        if data.get("priority", "interactive") not in PRIORITY:
+            raise ValueError(f"bad priority {data.get('priority')!r}")
+        data.setdefault("priority", "interactive")
+        data["id"] = path.stem
+        return data
+
+    def start(self, path: Path, server: str) -> None:
+        try:
+            data = self.validate(path)
+        except (OSError, ValueError) as e:
+            log.warning("rejected %s: %s", path.name, e)
+            write_json(self.done / f"{path.stem}.json",
+                       {"id": path.stem, "status": "rejected", "error": str(e), "finished": now_iso()})
+            path.unlink(missing_ok=True)
+            return
+        data["attempts"] = data.get("attempts", 0) + 1
+        data["started"] = now_iso()
+        write_json(self.running / f"{data['id']}.job", data, 0o600)
+        path.unlink()
+
+        out = self.running / f"{data['id']}.out"
+        env = dict(os.environ, PI_SESSION_DIR=str(self.transcripts / data["id"]), PI_PROVIDER=server)
+        with open(out, "w") as stdout:
+            proc = subprocess.Popen(
+                [str(self.run_task), str(self.vault), data["task"], data.get("input", "")],
+                stdin=subprocess.DEVNULL, stdout=stdout, start_new_session=True, env=env)
+        self.current = Job(data, proc, out, time_limit=self.time_limit(data["task"]))
+        log.info("start %s (%s %s) on %s", data["id"], data["priority"], data["task"], server)
+
+    def time_limit(self, task: str) -> float:
+        """`time-limit-minutes: N` from the task file's front matter, else the default."""
+        text = (self.vault / "_tasks" / f"{task}.md").read_text()
+        m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+        t = m and re.search(r"^time-limit-minutes:\s*(\d+)\s*$", m.group(1), re.M)
+        return int(t.group(1)) * 60 if t else DEFAULT_TIME_LIMIT
+
+    def finish(self, job: Job, status: str) -> None:
+        reply = job.out.read_text(errors="replace") if job.out.exists() else ""
+        result = dict(job.data, status=status, exit_code=job.proc.returncode,
+                      finished=now_iso(), active_seconds=round(job.active_seconds()),
+                      paused_seconds=round(time.monotonic() - job.started - job.active_seconds()),
+                      reply=reply[-MAX_REPLY:].strip())
+        write_json(self.done / f"{job.id}.json", result)
+        (self.running / f"{job.id}.job").unlink(missing_ok=True)
+        job.out.unlink(missing_ok=True)
+        log.info("%s %s %s after %ds (paused %ds)", status, job.id, job.data["task"],
+                 result["active_seconds"], result["paused_seconds"])
+
+    # --- scheduling ------------------------------------------------------
+
+    def step(self) -> None:
+        cur = self.current
+        if cur and cur.proc.poll() is not None:
+            self.finish(cur, "ok" if cur.proc.returncode == 0 else "failed")
+            self.current = cur = None
+            self.update_index(force=True)
+        if cur and cur.active_seconds() > cur.time_limit:
+            log.warning("%s hit its %d-minute time limit", cur.id, cur.time_limit // 60)
+            self.kill(cur)
+            self.finish(cur, "timeout")
+            self.current = cur = None
+            self.update_index(force=True)
+
+        waiting = self.waiting()
+        best = waiting[0][0] if waiting else None
+        if cur and waiting and best < cur.rank:
+            log.info("pause %s (%s) for %s", cur.id, cur.data["task"], waiting[0][1])
+            cur.pause()
+            self.paused.append(cur)
+            self.current = cur = None
+        if cur is None:
+            if self.reload_requested and not self.paused:
+                return  # draining before a reload: start nothing new
+            server = first_ready(self.servers) if waiting else None
+            if waiting and server is None:
+                if not self.waiting_for_model:
+                    log.info("no model server ready; jobs wait")
+                    self.waiting_for_model = True
+                return
+            self.waiting_for_model = False
+            if server and server != self.server:
+                log.info("model server: %s", server)
+                self.server = server
+            # self.paused is in rising priority (each job was paused by a better one), so the
+            # last is the best. It goes before waiting jobs that aren't better than it.
+            if self.paused and (not waiting or self.paused[-1].rank <= best):
+                job = self.paused.pop()
+                log.info("resume %s (%s)", job.id, job.data["task"])
+                job.resume()
+                self.current = job
+            elif waiting:
+                self.start(waiting[0][2], server)
+
+    def publish_status(self) -> None:
+        """Write status.json when what's running/paused/waiting changes."""
+        def brief(data: dict) -> dict:
+            return {k: data.get(k) for k in ("id", "task", "input", "priority", "started")}
+        waiting = []
+        for _, _, p in self.waiting():
+            try:
+                waiting.append(brief(json.loads(p.read_text())))
+            except (OSError, ValueError):
+                continue
+        status = {
+            "running": brief(self.current.data) if self.current else None,
+            "paused": [brief(j.data) for j in self.paused],
+            "waiting": waiting,
+        }
+        if status != self.last_status:
+            write_json(self.queue.parent / "status.json", dict(status, updated=now_iso()))
+            self.last_status = status
+
+    def kill(self, job: Job) -> None:
+        job.signal(signal.SIGTERM)
+        job.signal(signal.SIGCONT)  # a stopped process only acts on SIGTERM once continued
+        try:
+            job.proc.wait(10)
+        except subprocess.TimeoutExpired:
+            job.signal(signal.SIGKILL)
+            job.proc.wait()
+
+    # --- lifecycle -------------------------------------------------------
+
+    def recover(self) -> None:
+        """Requeue jobs left in running/ by a crash or reboot (once)."""
+        for p in self.running.glob("*.out"):
+            p.unlink()
+        for p in self.running.glob("*.job"):
+            try:
+                data = json.loads(p.read_text())
+            except (OSError, ValueError):
+                data = {"id": p.stem, "attempts": MAX_ATTEMPTS}
+            if data.get("attempts", 0) >= MAX_ATTEMPTS:
+                log.warning("giving up on %s after %d attempts", p.stem, data["attempts"])
+                write_json(self.done / f"{p.stem}.json",
+                           dict(data, status="failed", error="interrupted", finished=now_iso()))
+            else:
+                log.info("requeue interrupted job %s", p.stem)
+                write_json(self.queue / p.name, data, 0o644)
+            p.unlink()
+
+    def shutdown(self) -> None:
+        """Stop running jobs and put them back in the queue (not counted as an attempt)."""
+        for job in filter(None, [self.current, *self.paused]):
+            log.info("stopping %s; it will run again", job.id)
+            self.kill(job)
+            job.out.unlink(missing_ok=True)
+            data = dict(job.data, attempts=job.data["attempts"] - 1)
+            write_json(self.queue / f"{job.id}.job", data, 0o644)
+            (self.running / f"{job.id}.job").unlink(missing_ok=True)
+
+    def update_index(self, force: bool = False) -> None:
+        """Rebuild wiki/index.md when a page or the template changed (or after a job)."""
+        if not force and time.monotonic() - self.last_index_check < INDEX_CHECK_SECONDS:
+            return
+        self.last_index_check = time.monotonic()
+        if not self.index_tool.exists():
+            return
+        try:
+            files = [self.vault / "_config" / "index.md",
+                     *(p for p in (self.vault / "wiki").rglob("*.md") if p.name != "index.md")]
+            newest = max((p.stat().st_mtime for p in files if p.exists()), default=0.0)
+        except OSError:
+            return
+        if newest <= self.index_built_for and not force:
+            return
+        self.index_built_for = newest
+        try:
+            # Repair links into raw/ only while no job could be editing the pages.
+            idle = self.current is None and not self.paused
+            r = subprocess.run([sys.executable, str(self.index_tool), str(self.vault),
+                                *(["--fix-raw-links"] if idle else [])],
+                               capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.warning("wiki-index failed: %s", e)
+            return
+        if r.returncode != 0:
+            log.warning("wiki-index failed: %s", (r.stderr or r.stdout).strip()[-500:])
+            return
+        for change in r.stderr.splitlines():
+            log.info("%s", change)
+        if r.stdout.strip() == "updated":
+            log.info("wiki/index.md rebuilt")
+
+    def prune(self) -> None:
+        if time.monotonic() - self.last_prune < 3600:
+            return
+        self.last_prune = time.monotonic()
+        cutoff = time.time() - KEEP_DONE_DAYS * 86400
+        for p in [*self.done.glob("*.json"), *self.queue.glob(".*.tmp"), *self.done.glob(".*.tmp")]:
+            if p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+        for p in self.transcripts.iterdir():
+            if p.stat().st_mtime < cutoff:
+                shutil.rmtree(p, ignore_errors=True)
+
+    def run(self) -> None:
+        for d in (self.queue, self.running, self.done, self.transcripts):
+            d.mkdir(exist_ok=True)
+        self.recover()
+
+        def stop(signum, _frame):
+            self.stopping = True
+        def reload(signum, _frame):
+            log.info("reload requested; finishing the current job first")
+            self.reload_requested = True
+        signal.signal(signal.SIGTERM, stop)
+        signal.signal(signal.SIGINT, stop)
+        signal.signal(signal.SIGHUP, reload)
+
+        log.info("watching %s (vault %s)", self.queue, self.vault)
+        while not self.stopping:
+            self.step()
+            self.publish_status()
+            self.prune()
+            self.update_index()
+            if self.reload_requested and self.current is None and not self.paused:
+                log.info("reloading")
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+            time.sleep(POLL_SECONDS)
+        self.shutdown()
+        self.current, self.paused = None, []
+        self.publish_status()
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--root", type=Path, default=Path("/var/lib/wiki-jobs"))
+    ap.add_argument("--vault", type=Path, default=Path("/srv/wiki/vault"))
+    ap.add_argument("--run-task", type=Path, default=Path("/opt/wiki-runner/run-task.sh"))
+    args = ap.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    Runner(args.root, args.vault.resolve(), args.run_task.resolve()).run()
+
+
+if __name__ == "__main__":
+    main()

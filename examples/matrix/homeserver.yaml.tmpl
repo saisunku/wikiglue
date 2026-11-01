@@ -1,0 +1,67 @@
+# Synapse config for a private, tailnet-only homeserver.
+# Render with envsubst into /var/lib/wiki-matrix/synapse/homeserver.yaml.
+#
+# Security posture:
+#   - client API only: no federation listener, no federation peers, no key servers
+#   - no open registration (accounts are created with register_new_matrix_user)
+#   - no URL previews (would make Synapse fetch links posted in chat)
+#   - push notifications carry event IDs only, never message content
+
+server_name: "${MATRIX_SERVER_NAME}"
+public_baseurl: "https://${MATRIX_SERVER_NAME}/"
+pid_file: /data/homeserver.pid
+report_stats: false
+enable_metrics: false
+
+listeners:
+  - port: 8008
+    type: http
+    tls: false
+    # 0.0.0.0 inside the container; the host publishes it on 127.0.0.1 only.
+    bind_addresses: ["0.0.0.0"]
+    x_forwarded: true
+    resources:
+      - names: [client]
+        compress: false
+
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: "${POSTGRES_PASSWORD}"
+    dbname: synapse
+    host: postgres
+    cp_min: 2
+    cp_max: 10
+
+log_config: /data/log.config
+media_store_path: /data/media_store
+signing_key_path: /data/signing.key
+registration_shared_secret: "${REGISTRATION_SHARED_SECRET}"
+macaroon_secret_key: "${MACAROON_SECRET_KEY}"
+form_secret: "${FORM_SECRET}"
+
+# --- No federation ---
+federation_domain_whitelist: []
+trusted_key_servers: []
+suppress_key_server_warning: true
+allow_public_rooms_over_federation: false
+allow_public_rooms_without_auth: false
+
+# --- Accounts ---
+enable_registration: false
+require_auth_for_profile_requests: true
+limit_profile_requests_to_users_who_share_rooms: true
+include_profile_data_on_invite: false
+
+# --- No outbound fetching on behalf of users ---
+url_preview_enabled: false
+
+# --- Push: metadata only ---
+push:
+  include_content: false
+
+# Bot rooms start unencrypted so wikiglue can read them without E2EE support.
+encryption_enabled_by_default_for_room_type: "off"
+
+max_upload_size: 100M

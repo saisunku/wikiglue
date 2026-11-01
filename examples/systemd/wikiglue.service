@@ -1,0 +1,40 @@
+[Unit]
+Description=wikiglue: chat bot and capture glue for the local wiki
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=wikiglue
+Group=wiki
+ExecStart=/opt/wikiglue/venv/bin/wikiglue -c /etc/wikiglue/wikiglue.toml
+Restart=always
+RestartSec=5
+UMask=0002
+
+# Network: loopback only (Synapse on :8008, Karakeep on :3000). No internet.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Filesystem: read-only system, empty /home. Writable: its state, the vault (where
+# ACLs limit it to raw/, lists/ and _review/) and the job queue. The vault is
+# bind-mounted at /srv/wiki/vault by a vault.conf drop-in (BindPaths=<your vault>:/srv/wiki/vault).
+ProtectSystem=strict
+ProtectHome=tmpfs
+StateDirectory=wikiglue
+ReadWritePaths=/var/lib/wikiglue /srv/wiki/vault /var/lib/wiki-jobs
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

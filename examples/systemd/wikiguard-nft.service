@@ -1,0 +1,19 @@
+[Unit]
+Description=Egress rules for the wiki model and agent users (nftables table inet wikiguard)
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# No ExecStop on purpose: stopping this unit must not open the gates.
+# Remove by hand with: nft delete table inet wikiguard
+ExecStart=/usr/sbin/nft -f /etc/wikiguard.nft
+# Re-apply changed rules with `systemctl reload`. A restart would also restart
+# everything that Requires= this unit (llama-server, wiki-runner).
+ExecReload=/usr/sbin/nft -f /etc/wikiguard.nft
+
+[Install]
+WantedBy=multi-user.target

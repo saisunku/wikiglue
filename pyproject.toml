@@ -1,0 +1,31 @@
+[project]
+name = "wikiglue"
+version = "0.4.0"
+description = "Keep an Obsidian wiki up to date with a local model, from chat, bookmarks and email"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "mautrix[encryption]>=0.21,<0.22",
+    "aiosqlite>=0.20",
+    "asyncpg>=0.29",  # imported by mautrix's SQL stores even when backed by SQLite
+    "aiohttp>=3.9",
+    "html2text>=2024.2.26",  # email HTML -> Markdown (mail.py)
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+wikiglue = "wikiglue.__main__:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

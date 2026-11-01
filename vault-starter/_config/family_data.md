@@ -1,0 +1,2 @@
+- Alex Example — [[entities/alex]] — lives in: Springfield, IL, USA — also: Alexander Example, Al
+- Sam Example — [[entities/sam]] — lives in: Springfield, IL, USA

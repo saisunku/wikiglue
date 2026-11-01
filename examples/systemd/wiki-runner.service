@@ -1,0 +1,69 @@
+# The wiki job runner: takes jobs from /var/lib/wiki-jobs/queue/ and runs each
+# with pi as the wikibot user, one at a time, interactive before background
+# (see runner/wiki-runner). Queue a job with wiki-job, e.g.
+#   wiki-job --wait query "what is a levain?"
+# The vault is bind-mounted at /srv/wiki/vault by the vault.conf drop-in that
+# your setup writes; ACLs limit writes to wiki/, lists/ and _review/.
+
+[Unit]
+Description=Wiki job runner (pi + local model)
+Requires=wikiguard-nft.service
+After=wikiguard-nft.service llama-server.service
+Wants=llama-server.service
+
+[Service]
+User=wikibot
+Group=wikibot
+UMask=0002
+Nice=5
+WorkingDirectory=/srv/wiki/vault
+Environment=HOME=/var/lib/wikibot
+Environment=PI_CODING_AGENT_DIR=/var/lib/wikibot/pi-home
+Environment=PI_BIN=/opt/wiki-runner/pi-runtime/node_modules/.bin/pi
+Environment=NODE_BIN=/opt/wiki-runner/node/bin
+ExecStart=/usr/bin/python3 /opt/wiki-runner/wiki-runner
+# Pick up new code after the current job (see runner/wiki-runner).
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+# SIGTERM goes to the runner alone; it stops the current job and puts it back
+# in the queue, then anything left is killed.
+KillMode=mixed
+TimeoutStopSec=30
+MemoryMax=6G
+TasksMax=128
+
+# Network: only llama-server. nftables enforces the same for the wikibot user.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6
+
+# Filesystem: everything read-only except the vault (further limited by ACLs),
+# pi's config dir and the job folders. /home is empty apart from the vault mount.
+ProtectSystem=strict
+ProtectHome=tmpfs
+ReadWritePaths=/srv/wiki/vault /var/lib/wikibot/pi-home /var/lib/wiki-jobs
+InaccessiblePaths=-/etc/wikiglue -/etc/wiki-matrix -/var/lib/wikiglue -/var/lib/wiki-matrix -/root
+InaccessiblePaths=-/run/docker.sock -/run/tailscale -/run/dbus -/run/user
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectProc=invisible
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+{
+  "defaultProvider": "local",
+  "defaultModel": "ornith-1.5-35b-a3b",
+  "defaultProjectTrust": "never",
+  "enableInstallTelemetry": false,
+  "enableAnalytics": false,
+  "quietStartup": true,
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 6000,
+    "keepRecentTokens": 8000
+  },
+  "httpIdleTimeoutMs": 0
+}

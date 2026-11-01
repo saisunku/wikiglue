@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""The nightly lint: this script finds the problems, the model fixes them a few at a time.
+
+    wiki-lint [--print] <vault>   (run by run-task.sh for _tasks/lint.md, `script: wiki-lint`)
+
+One lint run used to read the whole wiki to find its problems; once the wiki outgrew the
+model's context, it spent the night re-reading pages and timed out (2026-11-02). Now:
+
+1. Found here, without the model: links in wiki/ that point at nothing (with the pages whose
+   names are closest), pages missing `title:` or `summary:`, front matter the website can't read,
+   topic and entity pages nothing links to, and rows in credits.md and returns.md past their date.
+2. Fixed by `lint-fix` jobs (_tasks/lint-fix.md), about ten problems each, grouped by page.
+3. Checked by `lint-review` jobs (_tasks/lint-review.md), a few pages each: the pages changed since
+   the last lint (from wiki/log.md), for duplicates and contradictions, and pages not updated in
+   over a year, for stale claims.
+4. One `## <today> lint` entry in wiki/log.md from the jobs' `- ` lines; the reply counts them.
+
+Stops starting jobs after BUDGET seconds; what's left is found again tomorrow. --print lists the
+problems and the jobs it would run, and runs nothing. Transcripts go under $PI_SESSION_DIR/<step>.
+Stdlib only.
+"""
+import difflib
+import importlib.machinery
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import date, timedelta
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+_loader = importlib.machinery.SourceFileLoader("wiki_index", str(HERE / "wiki-index"))
+wiki_index = importlib.util.module_from_spec(importlib.util.spec_from_loader("wiki_index", _loader))
+_loader.exec_module(wiki_index)
+
+FIX_BATCH = 10          # problems per lint-fix job
+REVIEW_BATCH = 3        # pages per lint-review job
+BUDGET = 25 * 60        # seconds; the task's time limit is 30 minutes
+JOB_TIMEOUT = 8 * 60    # one job; they're small, so longer means stuck
+STALE_DAYS = 365
+LINK = re.compile(r"(!?)\[\[([^\]|#]+)(#[^\]|]*)?(\|[^\]]*)?\]\]")
+CODE = re.compile(r"```.*?```|`[^`\n]*`|<!--.*?-->", re.S)
+SKIP = {"wiki/index.md", "wiki/log.md"}
+
+
+def wiki_pages(vault: Path) -> dict[str, str]:
+    """'wiki/a/b.md' -> text, for every page under wiki/ but the index and the log."""
+    out = {}
+    for p in sorted((vault / "wiki").rglob("*.md")):
+        rel = p.relative_to(vault).as_posix()
+        if rel in SKIP or any(part.startswith(".") for part in p.parts):
+            continue
+        try:
+            out[rel] = p.read_text(errors="replace")
+        except OSError:
+            pass
+    return out
+
+
+def targets(vault: Path) -> set[str]:
+    """Every name a link can use for a vault file: its path from the vault and from wiki/, both
+    with and without `.md`, and its bare name (Obsidian finds a unique bare name anywhere)."""
+    names = set()
+    for p in vault.rglob("*"):
+        if not p.is_file() or any(part.startswith(".") for part in p.relative_to(vault).parts):
+            continue
+        rel = p.relative_to(vault).as_posix()
+        for r in {rel, rel.removeprefix("wiki/")}:
+            names.add(r)
+            if r.endswith(".md"):
+                names.add(r[:-3])
+        names.add(p.stem if p.suffix == ".md" else p.name)
+    return names
+
+
+def links(text: str):
+    """(line number, link target) for each [[link]] outside code and comments."""
+    blanked = CODE.sub(lambda m: re.sub(r"[^\n]", " ", m.group(0)), text)
+    for n, line in enumerate(blanked.splitlines(), 1):
+        for m in LINK.finditer(line):
+            yield n, m.group(2).strip()
+
+
+def broken_links(vault: Path, pages: dict[str, str]) -> list[tuple[str, str]]:
+    names, folders = targets(vault), wiki_index.raw_folders(vault)
+    page_names = [p.removeprefix("wiki/")[:-3] for p in pages]
+    out = []
+    for page, text in pages.items():
+        for n, target in links(text):
+            if target in names or target.rstrip("/") in names:
+                continue
+            raw = re.search(r"(?:^|/)(raw/.+)$", target)
+            if raw:   # a raw/ link: the source folder's file, as wiki-index --fix-raw-links finds it
+                right = wiki_index.raw_target(vault, raw.group(1), folders)
+                hint = f"; the right target is [[{right}]]" if right else "; no source folder of that name"
+                out.append((page, f"line {n}: [[{target}]] points at nothing{hint}"))
+                continue
+            close = difflib.get_close_matches(target.removeprefix("wiki/"), page_names, n=3, cutoff=0.6)
+            hint = f"; closest pages: {', '.join(close)}" if close else "; no page with a similar name"
+            out.append((page, f"line {n}: [[{target}]] points at nothing{hint}"))
+    return out
+
+
+def front_matter_problems(pages: dict[str, str]) -> list[tuple[str, str]]:
+    out = []
+    for page, text in pages.items():
+        if not text.startswith("---\n") or not wiki_index.FRONT.match(text):
+            out.append((page, "no front matter block (`---` lines) at the top"))
+            continue
+        block = wiki_index.FRONT.match(text).group(1)
+        meta = wiki_index.front_matter(text)
+        if meta.get("type") == "redirect":
+            continue
+        for key in ("title", "summary"):
+            if not re.search(rf"^{key}:\s*\S", block, re.M):
+                out.append((page, f"front matter has no `{key}:`"))
+        for line in block.splitlines():
+            m = re.match(r"^([A-Za-z0-9_-]+):\s*(.+?)\s*$", line)
+            if not m:
+                continue
+            v = m.group(2)
+            if v[0] == '"' and (not v.endswith('"') or re.search(r'(?<!\\)"', v[1:-1])):
+                out.append((page, f"front matter `{m.group(1)}:` has a double quote inside double quotes"))
+            elif v[0] not in "\"'[{" and re.search(r": |\s#", v):
+                out.append((page, f"front matter `{m.group(1)}:` needs quotes (it contains `: ` or ` #`)"))
+    return out
+
+
+def orphans(pages: dict[str, str]) -> list[tuple[str, str]]:
+    linked = set()
+    for page, text in pages.items():
+        for _, target in links(text):
+            t = target.removeprefix("wiki/").removesuffix(".md")
+            if t != page.removeprefix("wiki/")[:-3]:
+                linked.add(t)
+    out = []
+    for page, text in pages.items():
+        name = page.removeprefix("wiki/")[:-3]
+        if not re.match(r"(topics|entities)/", name) or wiki_index.front_matter(text).get("type") == "redirect":
+            continue
+        if name not in linked and name.split("/")[-1] not in linked:
+            out.append((page, "orphan: no other page links to it"))
+    return out
+
+
+def past_rows(vault: Path, today: date) -> list[tuple[str, str]]:
+    """Table rows in credits.md / returns.md whose Expires / Return by date has passed."""
+    out = []
+    for name, column in (("credits.md", "Expires"), ("returns.md", "Return by")):
+        path = vault / "wiki" / name
+        if not path.exists():
+            continue
+        col = None
+        for line in path.read_text(errors="replace").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.startswith("|") else None
+            if cells is None:
+                col = None
+            elif column in cells:
+                col = cells.index(column)
+            elif col is not None and col < len(cells):
+                m = re.match(r"(\d{4}-\d{2}-\d{2})", cells[col])
+                if m and date.fromisoformat(m.group(1)) < today:
+                    out.append((f"wiki/{name}", f"{column} {m.group(1)} has passed: {cells[0]}, {' | '.join(cells[1:col])}"))
+    return out
+
+
+def changed_since_last_lint(vault: Path, pages: dict[str, str], today: date) -> list[str]:
+    """Pages linked from the log entries above the latest lint entry (the last 7 days if none)."""
+    try:
+        log = (vault / "wiki" / "log.md").read_text(errors="replace")
+    except OSError:
+        return []
+    found, week_ago = [], (today - timedelta(7)).isoformat()
+    for entry in re.split(r"(?m)^(?=## )", log):
+        head = re.match(r"## (\d{4}-\d{2}-\d{2}) (\S+)", entry)
+        if not head:
+            continue
+        if head.group(2) == "lint" or head.group(1) < week_ago:
+            break
+        for _, target in links(entry):
+            page = f"wiki/{target.removeprefix('wiki/').removesuffix('.md')}.md"
+            if page in pages and page not in found and re.match(r"wiki/(topics|entities|trips|household)/", page):
+                found.append(page)
+    return found
+
+
+def stale(pages: dict[str, str], today: date) -> list[str]:
+    out = []
+    for page, text in pages.items():
+        updated = str(wiki_index.front_matter(text).get("updated", ""))[:10]
+        try:
+            if (today - date.fromisoformat(updated)).days > STALE_DAYS and not page.startswith("wiki/sources/"):
+                out.append(page)
+        except ValueError:
+            pass
+    return out
+
+
+def batches(problems: list[tuple[str, str]], size: int) -> list[str]:
+    """Problems grouped by page, about `size` per batch, a page's problems never split."""
+    by_page: dict[str, list[str]] = {}
+    for page, what in problems:
+        by_page.setdefault(page, []).append(what)
+    out, cur, n = [], [], 0
+    for page, whats in by_page.items():
+        if cur and n + len(whats) > size:
+            out.append("\n".join(cur)); cur, n = [], 0
+        cur.append(f"{page}:\n" + "\n".join(f"  - {w}" for w in whats))
+        n += len(whats)
+    if cur:
+        out.append("\n".join(cur))
+    return out
+
+
+def run_task(vault: Path, task: str, text: str, step: str) -> str:
+    env = dict(os.environ)
+    if base := os.environ.get("PI_SESSION_DIR"):
+        env["PI_SESSION_DIR"] = f"{base}/{step}"
+    try:
+        r = subprocess.run([str(HERE / "run-task.sh"), str(vault), task, text], capture_output=True,
+                           text=True, env=env, stdin=subprocess.DEVNULL, timeout=JOB_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def add_log(vault: Path, today: date, bullets: list[str]) -> None:
+    path = vault / "wiki" / "log.md"
+    text = path.read_text()
+    entry = f"## {today.isoformat()} lint\n" + "\n".join(bullets) + "\n\n"
+    new = re.sub(r"(?m)^# Log\n+", lambda m: "# Log\n\n" + entry, text, count=1)
+    if new == text:
+        new = text.rstrip("\n") + "\n\n" + entry
+    tmp = path.with_name(".log.md.tmp")
+    tmp.write_text(new)
+    os.replace(tmp, path)
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    dry = "--print" in args
+    vault = Path([a for a in args if a != "--print"][0])
+    today = date.today()
+    pages = wiki_pages(vault)
+    problems = (broken_links(vault, pages) + front_matter_problems(pages) + orphans(pages)
+                + past_rows(vault, today))
+    jobs = [("lint-fix", b) for b in batches(problems, FIX_BATCH)]
+    review = [(p, "changed") for p in changed_since_last_lint(vault, pages, today)]
+    review += [(p, "stale") for p in stale(pages, today) if (p, "changed") not in review]
+    for i in range(0, len(review), REVIEW_BATCH):
+        jobs.append(("lint-review", "\n".join(f"{p} ({why})" for p, why in review[i:i + REVIEW_BATCH])))
+    if dry:
+        for task, text in jobs:
+            print(f"--- {task}\n{text}")
+        print(f"\n{len(problems)} problems, {len(review)} pages to review, {len(jobs)} jobs")
+        return 0
+
+    start, bullets, done, failed = time.monotonic(), [], 0, 0
+    for i, (task, text) in enumerate(jobs, 1):
+        if time.monotonic() - start > BUDGET:
+            break
+        reply = run_task(vault, task, text, f"{i:02d}-{task}")
+        if not reply:
+            failed += 1
+            continue
+        done += 1
+        bullets += [l.strip() for l in reply.splitlines() if l.strip().startswith("- ")]
+    if bullets:
+        add_log(vault, today, bullets)
+    left = len(jobs) - done - failed
+    print(f"{len(problems)} problems found, {len(review)} pages reviewed in {done + failed} of {len(jobs)} jobs"
+          + (f" ({failed} gave no answer)" if failed else "")
+          + (f", {left} left for tomorrow" if left else "") + f"; {len(bullets)} changes.")
+    print("\n".join(bullets))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
