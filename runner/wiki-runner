@@ -29,8 +29,10 @@ After each job, and whenever a wiki page or _config/index.md changes, it
 rebuilds wiki/index.md with wiki-index (next to this script), which also repairs broken
 links into raw/ while no job is running.
 
-SIGHUP (systemctl reload wiki-runner) loads new code without losing work: the
-runner finishes the current job, starts nothing new, then re-executes itself.
+SIGHUP (systemctl reload wiki-runner) loads new code and settings without losing work:
+the runner finishes the current job, starts nothing new, then exits, and systemd starts it
+again (Restart=always). A fresh start, not an exec in place, so new arguments and mounts in
+the unit (another wiki, say) take effect too.
 
 Runs as wikibot inside wiki-runner.service; stdlib only.
 """
@@ -410,8 +412,8 @@ class Runner:
             self.prune()
             self.update_index()
             if self.reload_requested and self.current is None and not self.paused:
-                log.info("reloading")
-                os.execv(sys.executable, [sys.executable, *sys.argv])
+                log.info("reloading: exiting for systemd to start the runner again")
+                break
             time.sleep(POLL_SECONDS)
         self.shutdown()
         self.current, self.paused = None, []
