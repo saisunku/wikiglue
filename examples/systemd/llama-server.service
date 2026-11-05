@@ -9,7 +9,7 @@ User=llm
 Group=llm
 SupplementaryGroups=render video
 # An example for one AMD card (RX 7900 XTX, Vulkan) and a 35B-A3B MoE model with vision;
-# change the model, device and power cap for your hardware.
+# change the model and device for your hardware.
 # Two slots sharing one KV pool: one pi job (pi caps itself at 32k, see
 # runner/pi-home/models.json) plus wikiglue's chat routing, which runs alongside
 # a job instead of waiting behind it (src/wikiglue/router.py).
