@@ -84,34 +84,80 @@ rules, `IPAddressDeny`, `ProtectSystem=strict` and vault ACLs. More in
 - llama.cpp `llama-server` with a model that handles tool calls well (and vision,
   for photos). Developed with a 35B-A3B mixture-of-experts model on one 24 GB GPU;
   an ingest takes 20–90 s.
-- Node.js for pi (`runner/pi-runtime/package.json` pins the version)
+- Node.js 22.19 or newer, for pi
 - Synapse and Karakeep (`examples/compose/`), and mbsync if you want email
 - An Obsidian vault, synced however you like
 
-## Getting started
+## Try it first
+
+The agent and the queue run from a checkout as your own user, with no services, no
+root and no chat. All you need is a llama-server on `127.0.0.1:8080` whose `--alias`
+matches the model `id` in `runner/pi-home/models.json` (edit either).
 
 ```sh
-# The service
-python3 -m venv /opt/wikiglue && /opt/wikiglue/bin/pip install .
+git clone <this repo> wikiglue && cd wikiglue
+(cd runner/pi-runtime && npm ci)
+mkdir -p ~/wiki-try/vault ~/wiki-try/jobs
+cp -r vault-template/. vault-starter/. ~/wiki-try/vault/      # a new, empty vault
 
-# The runner and pi
-sudo cp -r runner /opt/wiki-runner
-(cd /opt/wiki-runner/pi-runtime && npm ci)
+cp -r runner/pi-home ~/wiki-try/pi-home
+export PI_CODING_AGENT_DIR=~/wiki-try/pi-home WIKI_JOBS=~/wiki-try/jobs
+runner/wiki-runner --root ~/wiki-try/jobs --vault ~/wiki-try/vault &
 
-# The vault
-cp -rn vault-template/. vault-starter/. /path/to/vault/
-
-# Configuration: users, Matrix, Karakeep, mail
-sudo cp examples/wikiglue.toml /etc/wikiglue/wikiglue.toml
-
-# Then adapt and install examples/sysusers, systemd, nftables and cron/wiki-jobs.
+runner/wiki-job --wait query "What's in the wiki so far?"
 ```
 
-Try a job without chat:
+To ingest something without Karakeep or chat, write a source the way wikiglue does
+([docs/protocol.md](docs/protocol.md)) and queue it:
 
 ```sh
-/opt/wiki-runner/wiki-job --wait query "What's in the wiki so far?"
+d=~/wiki-try/vault/raw/2026/11/2026-11-sourdough-note && mkdir -p $d
+echo "Feed the starter 1:1:1 twelve hours before mixing; it's ready when it has doubled." > $d/source.md
+echo '{"title": "Sourdough note", "url": null, "added_by": "Alex", "added_at": "2026-11-04", "kind": "note"}' > $d/meta.json
+runner/wiki-job --wait ingest raw/2026/11/2026-11-sourdough-note
 ```
+
+Open `~/wiki-try/vault` in Obsidian to see the pages it wrote. This mode has none of the
+sandboxing below: pi runs as you, so try it on a vault you don't mind losing.
+
+## Installing as services
+
+With the sandbox: separate users, the network rules and the vault ACLs. Every path
+below is the one the examples use; change them together if you change one.
+
+1. **Users:** `sudo cp examples/sysusers/wiki.conf /etc/sysusers.d/ && sudo systemd-sysusers`.
+2. **Network rules:** `sudo cp examples/nftables/wikiguard.nft /etc/`, then the
+   `wikiguard-nft` unit. Check the model server's address and port in the file.
+3. **The model server:** adapt `examples/systemd/llama-server.service` (model, device, alias).
+4. **The runner and pi:**
+   ```sh
+   sudo cp -r runner /opt/wiki-runner && (cd /opt/wiki-runner/pi-runtime && sudo npm ci)
+   sudo install -d -o root -g wikibot -m 1770 /var/lib/wikibot/pi-home
+   sudo cp runner/pi-home/*.json /var/lib/wikibot/pi-home/
+   sudo install -d -o wikibot -g wiki -m 2770 /var/lib/wiki-jobs /var/lib/wiki-jobs/{queue,done}
+   sudo install -d -o wikibot -g wikibot -m 700 /var/lib/wiki-jobs/running
+   ```
+   If node isn't on the service's `PATH` (an nvm install, say), copy it to
+   `/opt/wiki-runner/node/bin/` or change `NODE_BIN` in the unit.
+5. **The vault:** a new one with `cp -r vault-template/. vault-starter/. <vault>/`. Then
+   `sudo examples/lockdown/vault-acl.sh <vault> <you>` sets who may write where. The
+   services see it at `/srv/wiki/vault`, through a drop-in for `wiki-runner` and `wikiglue`:
+   `/etc/systemd/system/<unit>.service.d/vault.conf` holding `[Service]` and
+   `BindPaths=<vault>:/srv/wiki/vault`.
+6. **wiki-runner:** `examples/systemd/wiki-runner.service`, and `examples/cron/wiki-jobs` as
+   `/etc/cron.d/wiki-jobs` for the schedules. Test it:
+   `sudo -u wikibot /opt/wiki-runner/wiki-job --wait query "What's in the wiki so far?"`.
+7. **wikiglue:**
+   ```sh
+   sudo python3 -m venv /opt/wikiglue/venv && sudo /opt/wikiglue/venv/bin/pip install .
+   sudo install -d -o root -g wiki -m 750 /etc/wikiglue
+   sudo cp examples/wikiglue.toml /etc/wikiglue/      # then edit: users, Matrix, Karakeep, mail
+   ```
+   Synapse and Karakeep come from `examples/compose/`. Put the bot's Matrix access token in
+   `/etc/wikiglue/matrix_token` and each person's Karakeep API key in the file their entry
+   names, all readable by group `wiki` only. Then `examples/systemd/wikiglue.service`.
+
+`examples/history/snapshot.sh` keeps a git history of the vault, so a bad edit can be undone.
 
 ## Chat commands
 
