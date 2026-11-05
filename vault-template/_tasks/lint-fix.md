@@ -1,5 +1,8 @@
 ---
 tools: read,edit,grep,find,ls
+# Mechanical fixes with the answer mostly given. With thinking on, the model planned every edit
+# before making the first and ran out of output tokens (2026-11-04).
+thinking: off
 time-limit-minutes: 8
 ---
 # Task: fix problems the nightly lint found
@@ -8,7 +11,9 @@ Problems, by page:
 
 $INPUT
 
-Fix each one, editing only the pages listed. Read a page before editing it.
+Fix each one, editing only the pages listed. Work one page at a time: read it, make its edits,
+then go on to the next. Fix only the problems listed, even if you notice others; the lint will
+find those itself.
 
 - **A link that points at nothing.** `[[a/b]]` needs `a/b.md` (or a file named exactly `a/b`, like
   an image).

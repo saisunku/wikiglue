@@ -23,12 +23,14 @@ def make(tmp_path: Path) -> Path:
     v = tmp_path
     (v / "raw/2026/10/2026-10-thing").mkdir(parents=True)
     (v / "raw/2026/10/2026-10-thing/source.md").write_text("x")
+    (v / "raw/2026/10/2026-10-other").mkdir(parents=True)
+    (v / "raw/2026/10/2026-10-other/source.md").write_text("x")
     page(v, "wiki/topics/bread.md", "[[topics/sourdough]] [[entities/king-arthur]] [[sources/2026-10-thing]]")
     page(v, "wiki/topics/sourdough.md", "[[topics/bread]] [[topics/sourdogh-starter]] "
          "[[../raw/2026/10/2026-10-thing|original]] `[[not/a/link]]` ![[raw/2026/10/2026-10-thing/source]]")
     page(v, "wiki/entities/king-arthur.md", "[[credits]]")
     page(v, "wiki/topics/lonely.md", "nothing links here", front='title: "Order #4: "big""\nsummary: a: b')
-    page(v, "wiki/sources/2026-10-thing.md", "no summary", front="title: Thing")
+    page(v, "wiki/sources/2026-10-thing.md", "no summary [[source|original]]", front="title: Thing")
     (v / "wiki/credits.md").write_text(
         "---\ntitle: Credits\nsummary: s\n---\n| Retailer | Kind | Expires | Holder |\n|---|---|---|---|\n"
         "| Old | gift card | 2026-11-01 | Alex |\n| New | gift card | 2026-12-01 | Alex |\n| Never | card | none | Alex |\n")
@@ -43,9 +45,14 @@ def test_finds_problems_without_the_model(tmp_path):
     v = make(tmp_path)
     pages = wl.wiki_pages(v)
     broken = wl.broken_links(v, pages)
-    assert [p for p, _ in broken] == ["wiki/topics/sourdough.md", "wiki/topics/sourdough.md"]
-    assert "closest pages: topics/sourdough" in broken[0][1]
-    assert "the right target is [[raw/2026/10/2026-10-thing/source]]" in broken[1][1]
+    assert sorted(p for p, _ in broken) == ["wiki/sources/2026-10-thing.md", "wiki/topics/sourdough.md",
+                                            "wiki/topics/sourdough.md"]
+    msgs = dict(broken)
+    by = [w for p, w in broken if p == "wiki/topics/sourdough.md"]
+    assert "closest pages: topics/sourdough" in by[0]
+    assert "the right target is [[raw/2026/10/2026-10-thing/source]]" in by[1]
+    # [[source]] could be either source's file: on a source page it means that source's own
+    assert "[[source]] points at nothing; the right target is [[raw/2026/10/2026-10-thing/source]]" in msgs["wiki/sources/2026-10-thing.md"]
     fm = wl.front_matter_problems(pages)
     assert ("wiki/sources/2026-10-thing.md", "front matter has no `summary:`") in fm
     assert any(p == "wiki/topics/lonely.md" and "double quote" in w for p, w in fm)

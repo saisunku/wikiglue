@@ -8,7 +8,8 @@ Pages (why each is here):
 
 $INPUT
 
-Look at each page in turn. Don't read the whole wiki: use `wiki/index.md`, `grep` and the pages
+Look at each page in turn, and finish one (make its edits) before starting the next. Don't read
+the whole wiki or `wiki/log.md`: use `wiki/index.md`, `grep -ril` (file names only) and the pages
 named below.
 
 - **(changed)**: the page changed since the last lint.

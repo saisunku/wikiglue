@@ -61,8 +61,9 @@ def wiki_pages(vault: Path) -> dict[str, str]:
 
 def targets(vault: Path) -> set[str]:
     """Every name a link can use for a vault file: its path from the vault and from wiki/, both
-    with and without `.md`, and its bare name (Obsidian finds a unique bare name anywhere)."""
-    names = set()
+    with and without `.md`, and its bare name if no other file has it (Obsidian finds a unique
+    bare name anywhere; `[[source]]` could be any source's source.md)."""
+    names, seen, ambiguous = set(), set(), set()
     for p in vault.rglob("*"):
         if not p.is_file() or any(part.startswith(".") for part in p.relative_to(vault).parts):
             continue
@@ -71,8 +72,9 @@ def targets(vault: Path) -> set[str]:
             names.add(r)
             if r.endswith(".md"):
                 names.add(r[:-3])
-        names.add(p.stem if p.suffix == ".md" else p.name)
-    return names
+        bare = p.stem if p.suffix == ".md" else p.name
+        (ambiguous if bare in seen else seen).add(bare)
+    return names | (seen - ambiguous)
 
 
 def links(text: str):
@@ -92,6 +94,8 @@ def broken_links(vault: Path, pages: dict[str, str]) -> list[tuple[str, str]]:
             if target in names or target.rstrip("/") in names:
                 continue
             raw = re.search(r"(?:^|/)(raw/.+)$", target)
+            if target == "source" and page.startswith("wiki/sources/"):   # its own source's file
+                raw = re.match("(.*)", f"raw/{Path(page).stem}/source")
             if raw:   # a raw/ link: the source folder's file, as wiki-index --fix-raw-links finds it
                 right = wiki_index.raw_target(vault, raw.group(1), folders)
                 hint = f"; the right target is [[{right}]]" if right else "; no source folder of that name"
