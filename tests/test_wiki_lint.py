@@ -28,7 +28,7 @@ def make(tmp_path: Path) -> Path:
     page(v, "wiki/topics/bread.md", "[[topics/sourdough]] [[entities/king-arthur]] [[sources/2026-10-thing]]")
     page(v, "wiki/topics/sourdough.md", "[[topics/bread]] [[topics/sourdogh-starter]] "
          "[[../raw/2026/10/2026-10-thing|original]] `[[not/a/link]]` ![[raw/2026/10/2026-10-thing/source]]")
-    page(v, "wiki/entities/king-arthur.md", "[[credits]]")
+    page(v, "wiki/entities/king-arthur.md", "[[credits]]\n![logo](https://e.com/x.png?d=1)\n<img src='http://e.com/y'>\n![[raw/2026/10/2026-10-thing/source]]")
     page(v, "wiki/topics/lonely.md", "nothing links here", front='title: "Order #4: "big""\nsummary: a: b')
     page(v, "wiki/sources/2026-10-thing.md", "no summary [[source|original]]", front="title: Thing")
     (v / "wiki/credits.md").write_text(
@@ -57,6 +57,8 @@ def test_finds_problems_without_the_model(tmp_path):
     assert ("wiki/sources/2026-10-thing.md", "front matter has no `summary:`") in fm
     assert any(p == "wiki/topics/lonely.md" and "double quote" in w for p, w in fm)
     assert any(p == "wiki/topics/lonely.md" and "needs quotes" in w for p, w in fm)
+    assert wl.remote_images(pages) == [("wiki/entities/king-arthur.md", "line 6: an image loaded from the internet"),
+                                       ("wiki/entities/king-arthur.md", "line 7: an image loaded from the internet")]
     assert wl.orphans(pages) == [("wiki/topics/lonely.md", "orphan: no other page links to it")]
     rows = wl.past_rows(v, TODAY)
     assert len(rows) == 1 and "2026-11-01 has passed: Old" in rows[0][1]

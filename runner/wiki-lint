@@ -7,7 +7,7 @@ One lint run used to read the whole wiki to find its problems; once the wiki out
 model's context, it spent the night re-reading pages and timed out (2026-11-02). Now:
 
 1. Found here, without the model: links in wiki/ that point at nothing (with the pages whose
-   names are closest), pages missing `title:` or `summary:`, front matter the website can't read,
+   names are closest), images loaded from the internet, pages missing `title:` or `summary:`, front matter the website can't read,
    topic and entity pages nothing links to, and rows in credits.md and returns.md past their date.
 2. Fixed by `lint-fix` jobs (_tasks/lint-fix.md), about ten problems each, grouped by page.
 3. Checked by `lint-review` jobs (_tasks/lint-review.md), a few pages each: the pages changed since
@@ -132,6 +132,20 @@ def front_matter_problems(pages: dict[str, str]) -> list[tuple[str, str]]:
     return out
 
 
+REMOTE_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*<?https?://|<img\b[^>]*\bsrc\s*=\s*[\"']?https?://", re.I)
+
+
+def remote_images(pages: dict[str, str]) -> list[tuple[str, str]]:
+    """Images loaded from the internet: Obsidian and browsers fetch them when the page is viewed,
+    so an injected source could use one to carry data out in its URL."""
+    out = []
+    for page, text in pages.items():
+        for n, line in enumerate(text.splitlines(), 1):
+            if REMOTE_IMAGE.search(line):
+                out.append((page, f"line {n}: an image loaded from the internet"))
+    return out
+
+
 def orphans(pages: dict[str, str]) -> list[tuple[str, str]]:
     linked = set()
     for page, text in pages.items():
@@ -248,7 +262,7 @@ def main() -> int:
     vault = Path([a for a in args if a != "--print"][0])
     today = date.today()
     pages = wiki_pages(vault)
-    problems = (broken_links(vault, pages) + front_matter_problems(pages) + orphans(pages)
+    problems = (broken_links(vault, pages) + remote_images(pages) + front_matter_problems(pages) + orphans(pages)
                 + past_rows(vault, today))
     jobs = [("lint-fix", b) for b in batches(problems, FIX_BATCH)]
     review = [(p, "changed") for p in changed_since_last_lint(vault, pages, today)]

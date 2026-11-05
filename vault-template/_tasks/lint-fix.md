@@ -23,6 +23,8 @@ find those itself.
   - Other links: if one of the closest pages listed is the page meant (read it to check), point the
     link there; if none is, or none is listed, `find` once for the page under another name, and
     otherwise remove the brackets and keep the text.
+- **An image loaded from the internet.** Make it a plain link, keeping its text:
+  `![chart](https://…)` or `<img src="https://…">` becomes `[image: chart](https://…)`.
 - **No `title:` or `summary:`.** Read the page and add it: the title as in its `# ` heading, the
   summary one line on what the page covers (it's shown in the index). Don't edit `wiki/index.md`.
 - **Front matter the website can't read.** Put the value in double quotes, with any double quotes

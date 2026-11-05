@@ -131,7 +131,8 @@ below is the one the examples use; change them together if you change one.
 3. **The model server:** adapt `examples/systemd/llama-server.service` (model, device, alias).
 4. **The runner and pi:**
    ```sh
-   sudo cp -r runner /opt/wiki-runner && (cd /opt/wiki-runner/pi-runtime && sudo npm ci)
+   (cd runner/pi-runtime && npm ci)      # as yourself: npm runs package scripts
+   sudo cp -r runner /opt/wiki-runner
    sudo install -d -o root -g wikibot -m 1770 /var/lib/wikibot/pi-home
    sudo cp runner/pi-home/*.json /var/lib/wikibot/pi-home/
    sudo install -d -o wikibot -g wiki -m 2770 /var/lib/wiki-jobs /var/lib/wiki-jobs/{queue,done}
@@ -266,6 +267,10 @@ site with [Quartz](https://quartz.jzhao.xyz):
 - **Check front matter while copying:** the agent writes the YAML headers, and one
   bad header fails the whole Quartz build. Quote values with an unquoted `: `,
   or drop the header and log it.
+- **Make remote images links:** on every page, not just clipped sources, turn
+  `![…](https://…)` and `<img src="https://…">` into plain links, so a page the agent
+  was tricked into writing can't send data out through an image URL
+  ([docs/security.md](docs/security.md)).
 - **Keep it offline:** build as a user with no network, and in `quartz.config.ts` set
   `analytics: null`, `fontOrigin: "local"` and `cdnCaching: false`, so the site
   contacts no third parties.
