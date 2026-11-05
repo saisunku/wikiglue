@@ -54,6 +54,7 @@ wikiglue is the glue around a headless coding agent
 | `vault-template/` | `AGENTS.md` (the wiki's rules for the model), `_tasks/` (one prompt per job type), `_config/` (chat commands, page templates) |
 | `vault-starter/` | Empty lists and review pages for a new vault |
 | `vault-templates/` | Other kinds of wiki, each a `template/` and a `starter/` like the two above: `library` (papers, posts and videos on one field, organised by idea and tool) and `projects` (one page per personal project: status, next steps, files, Claude Code sessions, purchases, links) |
+| `metrics/` | The metrics dashboard: Grafana, Loki, Prometheus and Alloy in Docker Compose, and `grafana-provisioning` to fill in the wikis |
 | `examples/` | systemd units, nftables rules, Docker Compose files for Synapse and Karakeep, cron schedule, vault ACLs, hourly git snapshots |
 | `docs/` | [The job protocol](docs/protocol.md) and [the security model](docs/security.md) |
 
@@ -174,6 +175,26 @@ Every job stays inside its own vault: `runner/file-guard.ts` refuses any file-to
 outside it, so a question asked in one wiki can't read another. That guard is in pi, though,
 not in the kernel: the sandbox gives the one `wikibot` user every vault. Share a runner only
 between wikis with the same owner.
+
+**Metrics dashboard (optional).** `metrics/` is a Grafana dashboard over the services'
+logs and the machine's numbers: jobs, failures and times per task, ingest times, sources added
+by person and way in, nightly lint, chat routing, blocked connections, GPU power, temperature
+and VRAM, llama-server speed. Alloy reads the journal into Loki (kept a year) and this
+machine's and llama-server's numbers into Prometheus; all four run in Docker
+(`metrics/compose.yml`), with no way out when the `br-metrics` and `wikimetrics` rules in
+`examples/nftables/wikiguard.nft` are loaded.
+1. `metrics/grafana-provisioning /var/lib/wiki-metrics/provisioning <wiki> [<wiki> ...]`, the
+   names wiki-runner serves, first the one for jobs naming none. It fills in the dashboard's
+   Wiki picker; rerun it when you add a wiki.
+2. `/etc/wiki-metrics/grafana.env` (mode 600) with `GF_SECURITY_ADMIN_PASSWORD=` and
+   `GF_SECURITY_SECRET_KEY=`; data folders under `/var/lib/wiki-metrics` (`loki` owned by
+   10001, `prometheus` by 65534, `grafana` by 472, `alloy` by `wikimetrics`).
+3. `GRAFANA_PROVISIONING=/var/lib/wiki-metrics/provisioning WIKIMETRICS_UID=$(id -u wikimetrics)
+   WIKIMETRICS_GID=$(id -g wikimetrics) JOURNAL_GID=$(getent group systemd-journal | cut -d: -f3)
+   docker compose -f metrics/compose.yml up -d`. Grafana is on `127.0.0.1:3001`; put a
+   reverse proxy in front of it for other devices. llama-server needs `--metrics`.
+
+Further wikis' bots run as `wikiglue@<name>` for their logs to be labelled with the wiki.
 
 ## Chat commands
 

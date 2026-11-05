@@ -1,0 +1,121 @@
+// Grafana Alloy for the wikis' metrics dashboard (metrics/compose.yml).
+// Runs on the host network as the wikimetrics user, which nftables limits to loopback.
+//
+// Logs: the wiki's units and the kernel's wikiguard-drop lines from the systemd journal
+// -> Loki. Metrics: this machine (CPU, memory, disk, GPU power/temperature/VRAM via
+// hwmon and drm) and llama-server's /metrics -> Prometheus.
+
+// ---- logs ------------------------------------------------------------------
+
+loki.source.journal "wiki" {
+  // On the first start, read back to the wiki's first day; later, from where it stopped.
+  max_age       = "8760h"
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.process.wiki.receiver]
+  labels        = { job = "journal" }
+}
+
+loki.relabel "journal" {
+  forward_to = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  // systemd's own lines about a unit (started, failed, restarted) come from init.scope
+  // and name the unit in UNIT.
+  rule {
+    source_labels = ["__journal__systemd_unit", "__journal_unit"]
+    separator     = ";"
+    regex         = "init\\.scope;(.+)"
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal__transport"]
+    target_label  = "transport"
+  }
+  // Chat bots of further wikis, run as wikiglue@<name>: wiki=<name>. Lines with no wiki label
+  // and none in the line (wiki-runner and a site build name it) are the first wiki's; the
+  // dashboard works that out when it queries (grafana-provisioning).
+  rule {
+    source_labels = ["unit"]
+    regex         = "wikiglue@(.+)\\.service"
+    target_label  = "wiki"
+  }
+  // Keep the wiki's own units and the kernel (filtered to wikiguard drops below).
+  rule {
+    source_labels = ["unit", "transport"]
+    separator     = ";"
+    regex         = "(wiki-runner|wikiglue|wikiglue@.*|wiki-site-build|wiki-site-web|llama-server|caddy|acme-renew|wikiguard-nft|wikimail-sync@.*)\\.service;.*|;kernel"
+    action        = "keep"
+  }
+}
+
+loki.process "wiki" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.match {
+    selector = "{transport=\"kernel\"} !~ \"wikiguard-drop\""
+    action   = "drop"
+  }
+
+  // wiki-runner logs plain messages, all at journal priority info, so Loki can't tell
+  // their level ("unknown" in Grafana). Give it one from what the line says.
+  stage.match {
+    selector = "{unit=\"wiki-runner.service\"} |~ \"^(failed|timeout) |hit its|giving up|wiki-index failed\""
+    stage.static_labels {
+      values = { level = "error" }
+    }
+  }
+  stage.match {
+    selector = "{unit=\"wiki-runner.service\", level=\"\"} |~ \"^rejected |no model server ready\""
+    stage.static_labels {
+      values = { level = "warning" }
+    }
+  }
+  stage.match {
+    selector = "{unit=\"wiki-runner.service\", level=\"\"}"
+    stage.static_labels {
+      values = { level = "info" }
+    }
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:3100/loki/api/v1/push"
+  }
+}
+
+// ---- metrics ---------------------------------------------------------------
+
+prometheus.exporter.unix "host" {
+  // The host's root is mounted at /host in the container (compose.yml).
+  procfs_path    = "/host/proc"
+  sysfs_path     = "/host/sys"
+  rootfs_path    = "/host"
+  set_collectors = ["cpu", "meminfo", "loadavg", "filesystem", "diskstats", "hwmon", "drm", "netdev", "uname"]
+  filesystem {
+    mount_points_exclude = "^/(dev|proc|run|sys|snap|var/lib/docker/.+)($|/)"
+  }
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  forward_to      = [prometheus.remote_write.local.receiver]
+  scrape_interval = "30s"
+}
+
+// llama-server answers /metrics when started with --metrics (examples/systemd/llama-server.service).
+prometheus.scrape "llama" {
+  targets         = [{"__address__" = "127.0.0.1:8080", "server" = "local"}]
+  forward_to      = [prometheus.remote_write.local.receiver]
+  scrape_interval = "30s"
+  job_name        = "llama-server"
+}
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = "http://127.0.0.1:9090/api/v1/write"
+  }
+}

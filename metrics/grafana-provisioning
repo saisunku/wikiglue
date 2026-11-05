@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+"""Write Grafana's provisioning folder for the metrics dashboard, for these wikis.
+
+    grafana-provisioning <dir> <wiki> [<wiki> ...]
+
+The wikis are the names wiki-runner serves (--vault NAME=FOLDER), the first being the one
+that gets jobs naming no wiki. <dir> gets datasources/ and dashboards/ (with wiki.json
+filled in: the Wiki picker, the first wiki for log lines that name none, and a 0 in the
+lint and digest tiles for any wiki that didn't run). Mount it at /etc/grafana/provisioning
+(GRAFANA_PROVISIONING in compose.yml) and restart Grafana.
+"""
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent / "grafana"
+NAME_RE = re.compile(r"^[a-z0-9_-]+$")
+ZERO_RE = re.compile(r'( or label_replace\(vector\(0\), "wiki", "[^"]*", "", ""\))+')
+DEFAULT_RE = re.compile(r'\{\{ or \.(w|wiki) "[^"]*" \}\}')
+
+
+def dashboard(template: dict, wikis: list[str]) -> dict:
+    d = json.loads(json.dumps(template))
+    zero = "".join(f' or label_replace(vector(0), "wiki", "{w}", "", "")' for w in wikis)
+    for p in d["panels"]:
+        for t in p.get("targets", []):
+            if "expr" in t:
+                e = ZERO_RE.sub(lambda _: zero, t["expr"])
+                t["expr"] = DEFAULT_RE.sub(lambda m: f'{{{{ or .{m.group(1)} "{wikis[0]}" }}}}', e)
+    var = next(v for v in d["templating"]["list"] if v["name"] == "wiki")
+    var["query"] = ",".join(wikis)
+    var["options"] = [{"text": "All", "value": "$__all", "selected": True}] + [
+        {"text": w, "value": w, "selected": False} for w in wikis]
+    var["current"] = {"text": ["All"], "value": ["$__all"]}
+    return d
+
+
+def main() -> None:
+    if len(sys.argv) < 3:
+        sys.exit(__doc__.strip())
+    out, wikis = Path(sys.argv[1]), sys.argv[2:]
+    for w in wikis:
+        if not NAME_RE.match(w):
+            sys.exit(f"bad wiki name {w!r}: lowercase letters, digits, - and _")
+    if len(set(wikis)) != len(wikis):
+        sys.exit("a wiki is named twice")
+    (out / "datasources").mkdir(parents=True, exist_ok=True)
+    (out / "dashboards").mkdir(exist_ok=True)
+    shutil.copyfile(HERE / "datasources.yaml", out / "datasources" / "datasources.yaml")
+    shutil.copyfile(HERE / "dashboards.yaml", out / "dashboards" / "dashboards.yaml")
+    d = dashboard(json.loads((HERE / "wiki.json").read_text()), wikis)
+    (out / "dashboards" / "wiki.json").write_text(json.dumps(d, indent=1) + "\n")
+    print(f"{out}: dashboard for {', '.join(wikis)}")
+
+
+if __name__ == "__main__":
+    main()

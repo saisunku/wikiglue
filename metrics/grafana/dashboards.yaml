@@ -1,0 +1,10 @@
+# Dashboards in this folder are loaded at start. Edit metrics/grafana/wiki.json in wikiglue and
+# rerun grafana-provisioning, not in Grafana (UI changes can't be saved over a provisioned dashboard).
+apiVersion: 1
+providers:
+  - name: wiki
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards

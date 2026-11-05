@@ -1,0 +1,2598 @@
+{
+ "uid": "wiki",
+ "title": "Wikis",
+ "tags": [
+  "wiki"
+ ],
+ "timezone": "browser",
+ "editable": false,
+ "graphTooltip": 1,
+ "schemaVersion": 39,
+ "version": 2,
+ "refresh": "5m",
+ "time": {
+  "from": "now-30d",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "type": "row",
+   "title": "Overview (selected time range)",
+   "id": 1,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
+  },
+  {
+   "type": "stat",
+   "title": "Jobs finished",
+   "id": 2,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 1
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Failed or timed out",
+   "id": 3,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 1
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | status=~\"failed|timeout\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 0.5
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Median ingest",
+   "id": 4,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 1
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max(quantile_over_time(0.5, {unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"ingest\" | status=\"ok\" | unwrap secs [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Slowest ingest",
+   "id": 5,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 1
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max(max_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"ingest\" | unwrap secs [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Lint in the last 26 h",
+   "id": 6,
+   "description": "0 means the last nightly lint didn't run (machine off or asleep). One value per wiki, whatever the Wiki picker says.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 1
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (wiki) (count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | task=\"lint\" [26h])) or label_replace(vector(0), \"wiki\", \"default\", \"\", \"\")",
+     "legendFormat": "{{wiki}}",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Raw links repaired",
+   "id": 7,
+   "description": "Links the agent wrote to a raw folder instead of its source.md, fixed by wiki-index",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 1
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |= \"fixed link\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Jobs",
+   "id": 8,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 5
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Jobs per day by task",
+   "id": 9,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 6
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (task) (count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" [1d]))",
+     "legendFormat": "{{task}}",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "timeseries",
+   "title": "Failures and timeouts per day",
+   "id": 10,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 6
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (task, status) (count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | status=~\"failed|timeout\" [1d]))",
+     "legendFormat": "{{task}} {{status}}",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "spanNulls": false
+     },
+     "color": {
+      "mode": "shades",
+      "fixedColor": "red"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "logs",
+   "title": "Failed, timed-out and rejected jobs (the id names the transcript folder in /var/lib/wiki-jobs/transcripts)",
+   "id": 11,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 14
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{unit=\"wiki-runner.service\"} |~ \"^(failed|timeout) |hit its|giving up|rejected|wiki-index failed\" !~ \"nosuchtask\"",
+     "legendFormat": "",
+     "queryType": "range"
+    }
+   ],
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending",
+    "enableLogDetails": true,
+    "dedupStrategy": "none"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Ingest",
+   "id": 12,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 22
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Time per ingest (each job)",
+   "id": 13,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 23
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=~\"ingest|ingest-part\" | unwrap secs [$__interval]) by (status)",
+     "legendFormat": "{{status}}",
+     "queryType": "range"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "drawStyle": "points",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "always",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Ingest time per day: median and 90th percentile",
+   "id": 14,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 23
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max(quantile_over_time(0.5, {unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"ingest\" | status=\"ok\" | unwrap secs [1d]))",
+     "legendFormat": "median",
+     "queryType": "range",
+     "step": "1d"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max(quantile_over_time(0.9, {unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"ingest\" | status=\"ok\" | unwrap secs [1d]))",
+     "legendFormat": "90th percentile",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "timeseries",
+   "title": "Sources added per day, by person and way in (chat, Karakeep app, extension, email\u2026)",
+   "id": 15,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 31
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (person, via) (count_over_time({unit=~`wikiglue(@.+)?\\.service`} | label_format wiki=`{{ or .wiki \"default\" }}` | wiki=~\"$wiki\" |= `ingest queued` | regexp `(?P<person>[\\w-]+)'s (?P<kind>bookmark|email) .* ingest queued(?:[^,]*)(?:, from (?P<from>.+))?$` | label_format via=`{{ if .from }}{{ .from }}{{ else }}{{ .kind }}{{ end }}` [1d]))",
+     "legendFormat": "{{person}} ({{via}})",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "timeseries",
+   "title": "Jobs per day by model server",
+   "id": 16,
+   "description": "Which llama.cpp server ran each job",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 31
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (server) (count_over_time({unit=\"wiki-runner.service\"} |~ `^start .* on ` | regexp `^start \\S+ \\(\\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+)\\) on (?P<server>\\S+)$` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" [1d]))",
+     "legendFormat": "{{server}}",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "row",
+   "title": "Lint, morning message, shopping list and digest",
+   "id": 17,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 39
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Duration per run",
+   "id": 18,
+   "description": "Lint stops after about 30 page edits and is killed at 20 minutes (_tasks/lint.md); the morning message (06:00) checks each upcoming trip, then writes the message",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 16,
+    "x": 0,
+    "y": 40
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=~\"lint|morning|shopping|digest\" | unwrap secs [1d]) by (wiki, task, status)",
+     "legendFormat": "{{wiki}} {{task}} {{status}}",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "stat",
+   "title": "Shopping list in the last 8 days",
+   "id": 19,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 40
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | task=\"shopping\" [8d]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Digest in the last 8 days",
+   "id": 20,
+   "description": "One value per wiki, whatever the Wiki picker says.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 40
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (wiki) (count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | task=\"digest\" [8d])) or label_replace(vector(0), \"wiki\", \"default\", \"\", \"\")",
+     "legendFormat": "{{wiki}}",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value_and_name"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Morning message in the last 26 h",
+   "id": 21,
+   "description": "0 means this morning's message didn't run (machine off, or no model server)",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 44
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | task=\"morning\" [26h]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Paused for chat (lint, this range)",
+   "id": 22,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 44
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ (\\S+/)?lint after ` | regexp `^(ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?lint after \\d+s \\(paused (?P<paused>\\d+)s\\)` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | unwrap paused [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "noValue": "0",
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "background",
+    "graphMode": "none",
+    "textMode": "value"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Chat",
+   "id": 23,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 48
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Questions: time per answer",
+   "id": 24,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 49
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "max_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"query\" | unwrap secs [$__interval]) by (status)",
+     "legendFormat": "{{status}}",
+     "queryType": "range"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "custom": {
+      "drawStyle": "points",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "always",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Plain messages routed, and routing failures, per day",
+   "id": 25,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 49
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=~`wikiglue(@.+)?\\.service`} | label_format wiki=`{{ or .wiki \"default\" }}` | wiki=~\"$wiki\" |= \"wikiglue.router: routed\" [1d]))",
+     "legendFormat": "routed",
+     "queryType": "range",
+     "step": "1d"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=~`wikiglue(@.+)?\\.service`} | label_format wiki=`{{ or .wiki \"default\" }}` | wiki=~\"$wiki\" |= \"routing failed, using the default\" [1d]))",
+     "legendFormat": "failed (fell back to saving as a source)",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "row",
+   "title": "Health",
+   "id": 26,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 57
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "Service failures per day",
+   "id": 27,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 58
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (unit) (count_over_time({unit=~\".+\"} |~ \"Failed with result|code=exited, status=[1-9]\" [1d]))",
+     "legendFormat": "{{unit}}",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "timeseries",
+   "title": "Waiting for a model server, raw links repaired",
+   "id": 28,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 58
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |= \"no model server ready\" [1d]))",
+     "legendFormat": "no model server",
+     "queryType": "range",
+     "step": "1d"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-runner.service\"} |= \"fixed link\" [1d]))",
+     "legendFormat": "raw links repaired",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "timeseries",
+   "title": "Blocked connections per day (wikiguard)",
+   "id": 29,
+   "description": "Logging is rate-limited to 10 a minute per user; egress checks cause some on purpose",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 58
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (who) (count_over_time({transport=\"kernel\"} |= `wikiguard-drop` | regexp `wikiguard-drop (?P<who>[\\w-]+):` [1d]))",
+     "legendFormat": "{{who}}",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "fillOpacity": 80,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "timeseries",
+   "title": "Site rebuilds, and front matter repairs per rebuild",
+   "id": 30,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 66
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-site-build.service\"} |= \"site rebuilt\" | regexp `site rebuilt(?:: (?P<w>[\\w-]+))?` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" [1d]))",
+     "legendFormat": "rebuilds",
+     "queryType": "range",
+     "step": "1d"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({unit=\"wiki-site-build.service\"} |= \"front matter repaired\" [1d])) / sum(count_over_time({unit=\"wiki-site-build.service\"} |= \"site rebuilt\" [1d]))",
+     "legendFormat": "repairs per rebuild (pages with bad YAML)",
+     "queryType": "range",
+     "step": "1d"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "interval": "1d"
+  },
+  {
+   "type": "logs",
+   "title": "Warnings and errors (runner, wikiglue, site build)",
+   "id": 31,
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 66
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{unit=~\"wiki-runner.service|wikiglue(@.+)?.service|wiki-site-build.service\"} |~ \"WARNING|ERROR|Traceback|FAIL|failed\" !~ \"^\\\\s\"",
+     "legendFormat": "",
+     "queryType": "range"
+    }
+   ],
+   "options": {
+    "showTime": true,
+    "wrapLogMessage": true,
+    "sortOrder": "Descending",
+    "enableLogDetails": true,
+    "dedupStrategy": "none"
+   }
+  },
+  {
+   "type": "row",
+   "title": "Machine (Prometheus)",
+   "id": 32,
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 74
+   },
+   "panels": []
+  },
+  {
+   "type": "timeseries",
+   "title": "GPU power",
+   "id": 33,
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 75
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_hwmon_power_average_watt",
+     "legendFormat": "average {{chip}}",
+     "instant": false,
+     "range": true
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_hwmon_power_cap_watt",
+     "legendFormat": "cap {{chip}}",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "watt",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "GPU temperatures",
+   "id": 34,
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 75
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_hwmon_temp_celsius * on (chip, sensor) group_left (label) node_hwmon_sensor_label * on (chip) group_left (chip_name) node_hwmon_chip_names{chip_name=\"amdgpu\"}",
+     "legendFormat": "{{chip}} {{label}}",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "GPU busy and VRAM used",
+   "id": 35,
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 75
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_drm_gpu_busy_percent",
+     "legendFormat": "busy {{card}}",
+     "instant": false,
+     "range": true
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "100 * node_drm_memory_vram_used_bytes / node_drm_memory_vram_size_bytes",
+     "legendFormat": "VRAM {{card}}",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "llama-server tokens per second",
+   "id": 36,
+   "description": "Needs llama-server started with --metrics (examples/systemd/llama-server.service)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 0,
+    "y": 83
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "llamacpp:predicted_tokens_seconds",
+     "legendFormat": "generation",
+     "instant": false,
+     "range": true
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "llamacpp:prompt_tokens_seconds",
+     "legendFormat": "prompt reading",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Memory available, disk free",
+   "id": 37,
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 8,
+    "y": 83
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_memory_MemAvailable_bytes",
+     "legendFormat": "memory available",
+     "instant": false,
+     "range": true
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_filesystem_avail_bytes{mountpoint=\"/\", fstype!=\"tmpfs\"}",
+     "legendFormat": "disk free /",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "CPU load",
+   "id": 38,
+   "description": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 8,
+    "x": 16,
+    "y": 83
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_load1",
+     "legendFormat": "1 min",
+     "instant": false,
+     "range": true
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "node_load15",
+     "legendFormat": "15 min",
+     "instant": false,
+     "range": true
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 10,
+      "pointSize": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "spanNulls": false
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*failed.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byRegexp",
+       "options": ".*timeout.*"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "shades",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   }
+  }
+ ],
+ "description": "wikiglue metrics/grafana/wiki.json; grafana-provisioning fills in the wikis",
+ "templating": {
+  "list": [
+   {
+    "name": "wiki",
+    "label": "Wiki",
+    "type": "custom",
+    "description": "The wikis this runner serves. Machine panels and the lint and digest tiles show every wiki.",
+    "query": "default",
+    "options": [
+     {
+      "text": "All",
+      "value": "$__all",
+      "selected": true
+     },
+     {
+      "text": "default",
+      "value": "default",
+      "selected": false
+     }
+    ],
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    },
+    "multi": true,
+    "includeAll": true,
+    "allValue": ".+"
+   }
+  ]
+ }
+}

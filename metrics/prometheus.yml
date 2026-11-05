@@ -1,0 +1,5 @@
+# Prometheus for the wikis' metrics dashboard (metrics/compose.yml). It scrapes
+# nothing itself: Alloy pushes to it (remote write), since Prometheus's container has no
+# way out of its network. Retention is set on the command line (compose.yml).
+global:
+  scrape_interval: 30s

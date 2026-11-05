@@ -1,0 +1,93 @@
+# The metrics dashboard (README: Metrics dashboard):
+#   GRAFANA_PROVISIONING=<dir from grafana-provisioning> WIKIMETRICS_UID=.. WIKIMETRICS_GID=.. \
+#   JOURNAL_GID=.. docker compose -f metrics/compose.yml up -d
+# Grafana is published on 127.0.0.1 only; put a reverse proxy in front of it. Loki and
+# Prometheus are published on 127.0.0.1 for Alloy. Data in /var/lib/wiki-metrics, Grafana's
+# admin password and secret in /etc/wiki-metrics/grafana.env. Meant to run with no way out:
+# examples/nftables/wikiguard.nft drops whatever leaves br-metrics, and Alloy runs as
+# wikimetrics, which may only use loopback.
+name: wiki-metrics
+
+services:
+  loki:
+    image: grafana/loki:3.7.8
+    restart: unless-stopped
+    user: "10001:10001"
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+      - /var/lib/wiki-metrics/loki:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks: [metrics]
+
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=365d
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /var/lib/wiki-metrics/prometheus:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [metrics]
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    restart: unless-stopped
+    env_file: /etc/wiki-metrics/grafana.env   # admin password, secret key, root URL
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Nothing leaves this machine: no usage reports, update checks, news, avatars,
+      # plugin downloads or public snapshots.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/wiki.json
+    volumes:
+      - ${GRAFANA_PROVISIONING:?}:/etc/grafana/provisioning:ro
+      - /var/lib/wiki-metrics/grafana:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks: [metrics]
+
+  alloy:
+    image: grafana/alloy:v1.20.1
+    restart: unless-stopped
+    # The wikimetrics user, and the group that may read the journal.
+    user: "${WIKIMETRICS_UID:?}:${WIKIMETRICS_GID:?}"
+    group_add: ["${JOURNAL_GID:?}"]
+    # Host network and PIDs: it reads the journal and this machine's /proc and /sys, and
+    # scrapes llama-server on 127.0.0.1:8080.
+    network_mode: host
+    pid: host
+    command:
+      - run
+      - --disable-reporting
+      - --server.http.listen-addr=127.0.0.1:12345
+      - --storage.path=/var/lib/alloy
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./config.alloy:/etc/alloy/config.alloy:ro
+      - /var/lib/wiki-metrics/alloy:/var/lib/alloy
+      - /var/log/journal:/var/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      - /:/host:ro,rslave
+
+networks:
+  # Fixed bridge name so the firewall (examples/nftables/wikiguard.nft) can cut it off from everything
+  # but itself.
+  metrics:
+    driver_opts:
+      com.docker.network.bridge.name: br-metrics
