@@ -34,7 +34,7 @@ APPROVALS_POLL_SECONDS = 10
 
 async def run(config: Config) -> None:
     state = State(config.state_dir / "glue.db")
-    jobs = Jobs(config.jobs_dir)
+    jobs = Jobs(config.jobs_dir, config.vault_name)
     timeout = aiohttp.ClientTimeout(total=300)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         router = Router(session, config.model_urls) if config.model_urls else None

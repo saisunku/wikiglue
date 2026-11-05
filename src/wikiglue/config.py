@@ -5,6 +5,7 @@ Example:
     vault = "/srv/wiki/vault"            # bind-mounted by the systemd drop-in
     state_dir = "/var/lib/wikiglue"
     jobs_dir = "/var/lib/wiki-jobs"      # wiki-runner's queue
+    vault_name = "family"                # optional: this wiki's name in wiki-runner's --vault
 
     [karakeep]
     url = "http://127.0.0.1:3000"
@@ -33,6 +34,7 @@ Example:
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,6 +79,7 @@ class Config:
     matrix: MatrixConfig | None
     users: tuple[User, ...]
     jobs_dir: Path = Path("/var/lib/wiki-jobs")
+    vault_name: str | None = None   # this wiki's name, when wiki-runner serves several
     karakeep_url: str | None = None
     model_urls: tuple[str, ...] = ()
     mailboxes: tuple[Mailbox, ...] = ()
@@ -105,6 +108,10 @@ def load_config(path: Path) -> Config:
         state_dir = Path(raw.get("state_dir", "/var/lib/wikiglue"))
     except KeyError as e:
         raise ConfigError(f"{path}: missing required key {e}") from None
+
+    vault_name = raw.get("vault_name")
+    if vault_name is not None and not re.match(r"^[a-z0-9_-]+$", str(vault_name)):
+        raise ConfigError(f"{path}: vault_name must be lowercase letters, digits, - and _")
 
     users = []
     for key, u in raw.get("users", {}).items():
@@ -145,6 +152,7 @@ def load_config(path: Path) -> Config:
         matrix=matrix,
         users=tuple(users),
         jobs_dir=Path(raw.get("jobs_dir", "/var/lib/wiki-jobs")),
+        vault_name=vault_name,
         karakeep_url=raw.get("karakeep", {}).get("url"),
         model_urls=tuple(raw.get("model", {}).get("urls")
                          or filter(None, [raw.get("model", {}).get("url")])),

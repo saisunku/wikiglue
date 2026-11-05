@@ -160,6 +160,18 @@ below is the one the examples use; change them together if you change one.
 
 `examples/history/snapshot.sh` keeps a git history of the vault, so a bad edit can be undone.
 
+**Several wikis on one GPU.** One wiki-runner can serve several vaults, so they share one
+queue: a chat question in one wiki pauses lint in another.
+- **wiki-runner:** give it each vault by name: `--vault family=/srv/wiki/family --vault
+  work=/srv/wiki/work`. Each one needs its own bind mount and `vault-acl.sh`.
+- **wikiglue:** run one per wiki, each with its own config, state folder and Matrix bot
+  account, and `vault_name = "work"` in its config. Jobs then carry the wiki's name, and each
+  wikiglue posts only its own wiki's results.
+- **Cron:** schedules name the wiki: `wiki-job --vault work --background lint`.
+
+All the vaults are written by the same `wikibot` user, so a source added to one wiki could get
+the model to edit another. Share a runner only between wikis with the same owner.
+
 ## Chat commands
 
 Commands live in the vault, so you edit them in Obsidian and wikiglue reloads them

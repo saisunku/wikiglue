@@ -8,7 +8,10 @@
     <root>/status.json        what's running, paused and waiting (for wikiglue's `queue`)
 
 A job only names a task (<vault>/_tasks/<task>.md) and its input; it can't name a
-command. A task's front matter may set `time-limit-minutes:` (default 30).
+command. One queue can serve several wikis (`--vault family=/srv/wiki/family --vault
+work=/srv/wiki/work`): a job names its wiki ("vault": "work"), never a folder, and
+jobs that don't go to the first. All wikis share the priorities below, so one wiki's
+chat question pauses another's lint. A task's front matter may set `time-limit-minutes:` (default 30).
 Jobs run by priority, then in arrival order: "chat" (questions and notes sent
 in chat), then "interactive" (ingests, wiki-job), then "background" (lint,
 shopping, digest). When a job arrives with a higher priority than the running
@@ -134,10 +137,13 @@ class Job:
 
 
 class Runner:
-    def __init__(self, root: Path, vault: Path, run_task: Path):
+    def __init__(self, root: Path, vaults: Path | dict[str, Path], run_task: Path):
         self.queue, self.running, self.done = root / "queue", root / "running", root / "done"
         self.transcripts = root / "transcripts"
-        self.vault, self.run_task = vault, run_task
+        # One queue can serve several wikis: name -> folder. A job picks one by name
+        # ("vault": "work"), never by path; jobs that don't say go to the first.
+        self.vaults = vaults if isinstance(vaults, dict) else {"default": vaults}
+        self.run_task = run_task
         self.current: Job | None = None
         self.paused: list[Job] = []
         self.stopping = False
@@ -149,7 +155,7 @@ class Runner:
         self.server: str | None = None   # the server the last job started on
         self.index_tool = Path(__file__).resolve().with_name("wiki-index")
         self.last_index_check = 0.0
-        self.index_built_for = -1.0   # newest page/template mtime the index was built from
+        self.index_built_for: dict[str, float] = {}   # per wiki: newest mtime indexed
 
     # --- queue -----------------------------------------------------------
 
@@ -173,7 +179,11 @@ class Runner:
         task, inp = data.get("task"), data.get("input", "")
         if not isinstance(task, str) or not TASK_RE.match(task):
             raise ValueError(f"bad task name {task!r}")
-        if not (self.vault / "_tasks" / f"{task}.md").is_file():
+        name = data.get("vault", next(iter(self.vaults)))
+        if name not in self.vaults:
+            raise ValueError(f"no such wiki {name!r}")
+        data["vault"] = name
+        if not (self.vaults[name] / "_tasks" / f"{task}.md").is_file():
             raise ValueError(f"no such task: _tasks/{task}.md")
         if not isinstance(inp, str) or len(inp) > MAX_INPUT:
             raise ValueError("input must be a string of at most %d characters" % MAX_INPUT)
@@ -201,14 +211,15 @@ class Runner:
         env = dict(os.environ, PI_SESSION_DIR=str(self.transcripts / data["id"]), PI_PROVIDER=server)
         with open(out, "w") as stdout:
             proc = subprocess.Popen(
-                [str(self.run_task), str(self.vault), data["task"], data.get("input", "")],
+                [str(self.run_task), str(self.vaults[data["vault"]]), data["task"], data.get("input", "")],
                 stdin=subprocess.DEVNULL, stdout=stdout, start_new_session=True, env=env)
-        self.current = Job(data, proc, out, time_limit=self.time_limit(data["task"]))
-        log.info("start %s (%s %s) on %s", data["id"], data["priority"], data["task"], server)
+        self.current = Job(data, proc, out, time_limit=self.time_limit(data["vault"], data["task"]))
+        log.info("start %s (%s %s/%s) on %s", data["id"], data["priority"], data["vault"],
+                 data["task"], server)
 
-    def time_limit(self, task: str) -> float:
+    def time_limit(self, vault: str, task: str) -> float:
         """`time-limit-minutes: N` from the task file's front matter, else the default."""
-        text = (self.vault / "_tasks" / f"{task}.md").read_text()
+        text = (self.vaults[vault] / "_tasks" / f"{task}.md").read_text()
         m = re.match(r"---\n(.*?)\n---\n", text, re.S)
         t = m and re.search(r"^time-limit-minutes:\s*(\d+)\s*$", m.group(1), re.M)
         return int(t.group(1)) * 60 if t else DEFAULT_TIME_LIMIT
@@ -273,7 +284,7 @@ class Runner:
     def publish_status(self) -> None:
         """Write status.json when what's running/paused/waiting changes."""
         def brief(data: dict) -> dict:
-            return {k: data.get(k) for k in ("id", "task", "input", "priority", "started")}
+            return {k: data.get(k) for k in ("id", "vault", "task", "input", "priority", "started")}
         waiting = []
         for _, _, p in self.waiting():
             try:
@@ -329,37 +340,41 @@ class Runner:
             (self.running / f"{job.id}.job").unlink(missing_ok=True)
 
     def update_index(self, force: bool = False) -> None:
-        """Rebuild wiki/index.md when a page or the template changed (or after a job)."""
+        """Rebuild each wiki's wiki/index.md when a page or the template changed (or after a job)."""
         if not force and time.monotonic() - self.last_index_check < INDEX_CHECK_SECONDS:
             return
         self.last_index_check = time.monotonic()
         if not self.index_tool.exists():
             return
+        for name, vault in self.vaults.items():
+            self.update_one_index(name, vault, force)
+
+    def update_one_index(self, name: str, vault: Path, force: bool) -> None:
         try:
-            files = [self.vault / "_config" / "index.md",
-                     *(p for p in (self.vault / "wiki").rglob("*.md") if p.name != "index.md")]
+            files = [vault / "_config" / "index.md",
+                     *(p for p in (vault / "wiki").rglob("*.md") if p.name != "index.md")]
             newest = max((p.stat().st_mtime for p in files if p.exists()), default=0.0)
         except OSError:
             return
-        if newest <= self.index_built_for and not force:
+        if newest <= self.index_built_for.get(name, -1.0) and not force:
             return
-        self.index_built_for = newest
+        self.index_built_for[name] = newest
         try:
             # Repair links into raw/ only while no job could be editing the pages.
             idle = self.current is None and not self.paused
-            r = subprocess.run([sys.executable, str(self.index_tool), str(self.vault),
+            r = subprocess.run([sys.executable, str(self.index_tool), str(vault),
                                 *(["--fix-raw-links"] if idle else [])],
                                capture_output=True, text=True, timeout=60)
         except (OSError, subprocess.TimeoutExpired) as e:
-            log.warning("wiki-index failed: %s", e)
+            log.warning("wiki-index failed for %s: %s", name, e)
             return
         if r.returncode != 0:
-            log.warning("wiki-index failed: %s", (r.stderr or r.stdout).strip()[-500:])
+            log.warning("wiki-index failed for %s: %s", name, (r.stderr or r.stdout).strip()[-500:])
             return
         for change in r.stderr.splitlines():
             log.info("%s", change)
         if r.stdout.strip() == "updated":
-            log.info("wiki/index.md rebuilt")
+            log.info("%s: wiki/index.md rebuilt", name)
 
     def prune(self) -> None:
         if time.monotonic() - self.last_prune < 3600:
@@ -387,7 +402,8 @@ class Runner:
         signal.signal(signal.SIGINT, stop)
         signal.signal(signal.SIGHUP, reload)
 
-        log.info("watching %s (vault %s)", self.queue, self.vault)
+        log.info("watching %s (%s)", self.queue,
+                 ", ".join(f"{n}: {v}" for n, v in self.vaults.items()))
         while not self.stopping:
             self.step()
             self.publish_status()
@@ -405,11 +421,19 @@ class Runner:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", type=Path, default=Path("/var/lib/wiki-jobs"))
-    ap.add_argument("--vault", type=Path, default=Path("/srv/wiki/vault"))
+    ap.add_argument("--vault", action="append", metavar="[NAME=]FOLDER",
+                    help="a wiki this queue serves; repeat for several (default /srv/wiki/vault)")
     ap.add_argument("--run-task", type=Path, default=Path(__file__).resolve().with_name("run-task.sh"))
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    Runner(args.root, args.vault.resolve(), args.run_task.resolve()).run()
+    vaults: dict[str, Path] = {}
+    for v in args.vault or ["/srv/wiki/vault"]:
+        name, _, folder = v.rpartition("=")
+        name = name or "default"
+        if not TASK_RE.match(name) or name in vaults:
+            ap.error(f"bad or repeated wiki name {name!r} in --vault {v}")
+        vaults[name] = Path(folder).resolve()
+    Runner(args.root, vaults, args.run_task.resolve()).run()
 
 
 if __name__ == "__main__":

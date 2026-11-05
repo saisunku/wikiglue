@@ -3,6 +3,8 @@
 vault = "/srv/wiki/vault"            # bind-mounted by the systemd drop-in
 state_dir = "/var/lib/wikiglue"
 jobs_dir = "/var/lib/wiki-jobs"      # wiki-runner's queue
+# vault_name = "family"              # when one wiki-runner serves several wikis: this one's
+#                                    # name in its --vault family=... (one wikiglue per wiki)
 
 [karakeep]
 url = "http://127.0.0.1:3000"

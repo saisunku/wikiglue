@@ -92,3 +92,34 @@ def test_equal_priority_never_pauses(env):
     runner.step()
     assert runner.current is first and runner.paused == []
     step_until(runner, lambda: runner.current is None)
+
+
+def test_one_queue_serves_several_wikis(tmp_path, monkeypatch):
+    root = tmp_path / "jobs"
+    for d in ("queue", "running", "done", "transcripts"):
+        (root / d).mkdir(parents=True)
+    vaults = {}
+    for name in ("family", "work"):
+        (tmp_path / name / "_tasks").mkdir(parents=True)
+        (tmp_path / name / "_tasks" / "query.md").write_text("# query\n")
+        vaults[name] = tmp_path / name
+    fake = tmp_path / "run-task.sh"   # answers with the vault folder it was given
+    fake.write_text('#!/bin/sh\necho "$1"\n')
+    fake.chmod(0o755)
+    monkeypatch.setattr(wr, "first_ready", lambda servers: "local")
+    monkeypatch.setattr(wr.Runner, "update_index", lambda self, force=False: None)
+    runner = wr.Runner(root, vaults, fake)
+    family, work, either = Jobs(root, "family"), Jobs(root, "work"), Jobs(root)
+
+    ids = {"work": work.submit("query", ""), "family": family.submit("query", ""),
+           "first": either.submit("query", "")}
+    bad = (root / "queue" / "x.job")
+    bad.write_text('{"task": "query", "vault": "../etc"}')
+    step_until(runner, lambda: len(list((root / "done").glob("*.json"))) == 4)
+
+    replies = {r["id"]: r for r in either.results()}
+    assert replies[ids["work"]]["reply"] == str(vaults["work"])
+    assert replies[ids["family"]]["reply"] == str(vaults["family"])
+    assert replies[ids["first"]]["reply"] == str(vaults["family"])   # no name: the first
+    assert replies["x"]["status"] == "rejected"
+    assert [r["id"] for r in work.results()] == [ids["work"]]       # each sees only its own

@@ -3,6 +3,9 @@
 wikiglue drops job files into <jobs_dir>/queue/ and reads results from
 <jobs_dir>/done/. It never runs the model itself and the runner never talks to
 Matrix: this folder is the only link between them.
+
+When one runner serves several wikis, each wiki has its own wikiglue with
+`vault_name` set: it marks its jobs with that name and posts only their results.
 """
 
 from __future__ import annotations
@@ -18,7 +21,8 @@ TASK_RE = re.compile(r"^[a-z0-9_-]+$")
 
 
 class Jobs:
-    def __init__(self, jobs_dir: Path):
+    def __init__(self, jobs_dir: Path, vault_name: str | None = None):
+        self.vault_name = vault_name
         self.queue = jobs_dir / "queue"
         self.done = jobs_dir / "done"
         self.status_file = jobs_dir / "status.json"
@@ -42,6 +46,8 @@ class Jobs:
             "submitted_by": submitted_by,
             "meta": meta or {},
         }
+        if self.vault_name:
+            job["vault"] = self.vault_name
         tmp = self.queue / f".{job_id}.tmp"
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         with os.fdopen(fd, "w") as f:
@@ -51,13 +57,15 @@ class Jobs:
         return job_id
 
     def results(self) -> list[dict]:
-        """Finished jobs, oldest first."""
+        """Finished jobs (this wiki's, if vault_name is set), oldest first."""
         out = []
         for p in sorted(self.done.glob("*.json")):
             try:
-                out.append(json.loads(p.read_text()))
+                result = json.loads(p.read_text())
             except (OSError, ValueError):
                 continue  # being written or unreadable; the runner writes atomically
+            if not self.vault_name or result.get("vault") == self.vault_name:
+                out.append(result)
         return out
 
     def status(self) -> dict | None:
@@ -77,7 +85,8 @@ class Jobs:
             if job.get("task") == "ingest":
                 text = Path(text).name  # raw/2026/10/2026-10-rye-bread -> the slug
             text = text if len(text) <= 60 else text[:57] + "…"
-            return f"{job.get('task')} {text}".strip()
+            other = job.get("vault") if job.get("vault") not in (None, self.vault_name) else None
+            return (f"[{other}] " if other else "") + f"{job.get('task')} {text}".strip()
 
         def minutes(job: dict) -> str:
             try:
