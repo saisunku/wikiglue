@@ -233,8 +233,8 @@ class Runner:
         write_json(self.done / f"{job.id}.json", result)
         (self.running / f"{job.id}.job").unlink(missing_ok=True)
         job.out.unlink(missing_ok=True)
-        log.info("%s %s %s after %ds (paused %ds)", status, job.id, job.data["task"],
-                 result["active_seconds"], result["paused_seconds"])
+        log.info("%s %s %s/%s after %ds (paused %ds)", status, job.id, job.data["vault"],
+                 job.data["task"], result["active_seconds"], result["paused_seconds"])
 
     # --- scheduling ------------------------------------------------------
 
