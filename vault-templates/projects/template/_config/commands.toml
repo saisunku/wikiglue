@@ -1,0 +1,86 @@
+# Chat commands for the projects wiki's bot. Edit freely; wikiglue reloads on save.
+#
+# A message that starts with a command's prefix (case-insensitive, longest
+# first; default "<name>:") runs that command without the model.
+#
+# Any other plain message is routed by the local model (route = true): from its
+# first 100 words it picks the command whose `description` fits. Write
+# descriptions for the model. Commands without a description, and admin-only
+# ones, are never picked.
+#
+# actions:
+#   append   add a line to a vault file
+#   task     run _tasks/<x>.md with the whole message (pi runs the task)
+#   bookmark save to Karakeep → ingest into the wiki (links and files always are)
+#   builtin  ping | help | approve | requests | announce | queue
+#
+# roles: "admin" (whoever runs the wiki) and/or "member" (everyone else). Omit for everyone.
+#
+# A message that starts with a link is always saved to Karakeep and ingested. To log a Claude
+# Code session, start with the project: "wikiglue: session https://claude.ai/code/session_... set up the templates".
+
+# Scheduled tasks whose results are posted to the room picked with "announce".
+announce = ["digest"]
+
+# Let the model pick a command for plain messages. false: they all go to [default].
+route = true
+
+[commands.project]          # "wikiglue: finished the file guard; next, templates for the new wikis"
+description = "An update about one of the projects: progress made, next steps, a Claude Code session, files or folders it uses, a purchase, a useful link, a decision, pausing or finishing it, or starting a new project. Not a question."
+action = "task"
+task   = "_tasks/project.md"
+format = "{text} ({sender}, {date})"
+reply  = "result"
+
+[commands.note]             # "note: PLA warps less than ABS without an enclosure"
+description = "Save a general fact, tip or note for later that isn't about one particular project (not a question)."
+action = "bookmark"
+
+[commands.summary]          # "summary: GPU options [[sources/a]] [[sources/b]]"
+description = "Asks for a summary page built from a chosen set of saved sources (articles, docs, receipts), named or described in the message, or to rebuild a summary page by its title."
+action = "task"
+task   = "_tasks/summary.md"
+reply  = "result"
+
+[commands."?"]
+prefix = "?"
+action = "task"
+task   = "_tasks/query.md"
+reply  = "result"
+
+[commands.approve]
+prefix = "approve "
+action = "builtin"
+roles  = ["admin"]
+
+[commands.requests]          # list open research requests, numbered for "approve N"
+prefix = "requests"
+description = "Asks to see the open research requests."
+action = "builtin"
+
+[commands.queue]             # what the wiki agent is working on
+prefix = "queue"
+description = "Asks what the wiki bot is busy with right now."
+action = "builtin"
+
+[commands.announce]          # post weekly digests in this room
+prefix = "announce"
+action = "builtin"
+roles  = ["admin"]
+
+[commands.ping]
+prefix = "ping"
+action = "builtin"
+
+[commands.help]
+prefix = "help"
+action = "builtin"
+
+# Plain messages the model doesn't route elsewhere are questions for the wiki.
+# Messages that start with a link, and every file, are always saved to Karakeep,
+# then copied into raw/ and ingested.
+[default]
+description = "A question about the projects (status, next steps, where files are, sessions, spending, links), or anything that doesn't clearly fit another command."
+action = "task"
+task   = "_tasks/query.md"
+reply  = "result"

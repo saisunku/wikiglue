@@ -146,7 +146,18 @@ def remote_images(pages: dict[str, str]) -> list[tuple[str, str]]:
     return out
 
 
-def orphans(pages: dict[str, str]) -> list[tuple[str, str]]:
+def folders(vault: Path, key: str, default: str) -> str:
+    """A regex for the wiki/ folders named in _tasks/lint.md's front matter (`orphan-folders:
+    topics entities`), so each kind of wiki says which of its folders to check."""
+    try:
+        value = wiki_index.front_matter((vault / "_tasks" / "lint.md").read_text()).get(key)
+    except OSError:
+        value = None
+    names = str(value or default).replace(",", " ").split()
+    return "(" + "|".join(re.escape(n.strip("/")) for n in names) + ")/"
+
+
+def orphans(pages: dict[str, str], within: str = "(topics|entities)/") -> list[tuple[str, str]]:
     linked = set()
     for page, text in pages.items():
         for _, target in links(text):
@@ -156,7 +167,7 @@ def orphans(pages: dict[str, str]) -> list[tuple[str, str]]:
     out = []
     for page, text in pages.items():
         name = page.removeprefix("wiki/")[:-3]
-        if not re.match(r"(topics|entities)/", name) or wiki_index.front_matter(text).get("type") == "redirect":
+        if not re.match(within, name) or wiki_index.front_matter(text).get("type") == "redirect":
             continue
         if name not in linked and name.split("/")[-1] not in linked:
             out.append((page, "orphan: no other page links to it"))
@@ -184,7 +195,8 @@ def past_rows(vault: Path, today: date) -> list[tuple[str, str]]:
     return out
 
 
-def changed_since_last_lint(vault: Path, pages: dict[str, str], today: date) -> list[str]:
+def changed_since_last_lint(vault: Path, pages: dict[str, str], today: date,
+                            within: str = "(topics|entities|trips|household)/") -> list[str]:
     """Pages linked from the log entries above the latest lint entry (the last 7 days if none)."""
     try:
         log = (vault / "wiki" / "log.md").read_text(errors="replace")
@@ -199,7 +211,7 @@ def changed_since_last_lint(vault: Path, pages: dict[str, str], today: date) -> 
             break
         for _, target in links(entry):
             page = f"wiki/{target.removeprefix('wiki/').removesuffix('.md')}.md"
-            if page in pages and page not in found and re.match(r"wiki/(topics|entities|trips|household)/", page):
+            if page in pages and page not in found and re.match("wiki/" + within, page):
                 found.append(page)
     return found
 
@@ -262,10 +274,12 @@ def main() -> int:
     vault = Path([a for a in args if a != "--print"][0])
     today = date.today()
     pages = wiki_pages(vault)
-    problems = (broken_links(vault, pages) + remote_images(pages) + front_matter_problems(pages) + orphans(pages)
+    problems = (broken_links(vault, pages) + remote_images(pages) + front_matter_problems(pages)
+                + orphans(pages, folders(vault, "orphan-folders", "topics entities"))
                 + past_rows(vault, today))
     jobs = [("lint-fix", b) for b in batches(problems, FIX_BATCH)]
-    review = [(p, "changed") for p in changed_since_last_lint(vault, pages, today)]
+    review = [(p, "changed") for p in changed_since_last_lint(
+        vault, pages, today, folders(vault, "review-folders", "topics entities trips household"))]
     review += [(p, "stale") for p in stale(pages, today) if (p, "changed") not in review]
     for i in range(0, len(review), REVIEW_BATCH):
         jobs.append(("lint-review", "\n".join(f"{p} ({why})" for p, why in review[i:i + REVIEW_BATCH])))

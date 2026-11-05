@@ -1,0 +1,76 @@
+# Chat commands for this library's bot. Edit freely; wikiglue reloads on save.
+#
+# A message that starts with a command's prefix (case-insensitive, longest
+# first; default "<name>:") runs that command without the model.
+#
+# Any other plain message is routed by the local model (route = true): from its
+# first 100 words it picks the command whose `description` fits. Write
+# descriptions for the model. Commands without a description, and admin-only
+# ones, are never picked.
+#
+# actions:
+#   append   add a line to a vault file
+#   task     run _tasks/<x>.md with the whole message (pi runs the task)
+#   bookmark save to Karakeep → ingest into the wiki (links and files always are)
+#   builtin  ping | help | approve | requests | announce | queue
+#
+# roles: "admin" (whoever runs the wiki) and/or "member" (everyone else). Omit for everyone.
+
+# Scheduled tasks whose results are posted to the room picked with "announce".
+announce = ["digest"]
+
+# Let the model pick a command for plain messages. false: they all go to [default].
+route = true
+
+[commands.note]             # "note: the talk's point was that retries need jitter"
+description = "Save a thought, takeaway or note about something read or watched, to file in the library (not a question)."
+action = "bookmark"
+
+[commands.summary]          # "summary: Raft vs Paxos [[sources/a]] [[sources/b]]"
+description = "Asks for a summary page built from a chosen set of saved sources (papers, posts, videos), named or described in the message, or to rebuild a summary page by its title."
+action = "task"
+task   = "_tasks/summary.md"
+reply  = "result"
+
+[commands."?"]
+prefix = "?"
+action = "task"
+task   = "_tasks/query.md"
+reply  = "result"
+
+[commands.approve]
+prefix = "approve "
+action = "builtin"
+roles  = ["admin"]
+
+[commands.requests]          # suggested reading, numbered for "approve N"
+prefix = "requests"
+description = "Asks to see the suggested reading (open research requests)."
+action = "builtin"
+
+[commands.queue]             # what the wiki agent is working on
+prefix = "queue"
+description = "Asks what the wiki bot is busy with right now."
+action = "builtin"
+
+[commands.announce]          # post weekly digests in this room
+prefix = "announce"
+action = "builtin"
+roles  = ["admin"]
+
+[commands.ping]
+prefix = "ping"
+action = "builtin"
+
+[commands.help]
+prefix = "help"
+action = "builtin"
+
+# Plain messages the model doesn't route elsewhere are questions for the library.
+# Messages that start with a link, and every file, are always saved to Karakeep,
+# then copied into raw/ and ingested.
+[default]
+description = "A question about anything in the library (ideas, techniques, tools, what to read), or anything that doesn't clearly fit another command."
+action = "task"
+task   = "_tasks/query.md"
+reply  = "result"

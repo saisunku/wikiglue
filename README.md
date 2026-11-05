@@ -53,6 +53,7 @@ wikiglue is the glue around a headless coding agent
 | `runner/` | `wiki-runner` (the queue), `wiki-job` (submit a job), `run-task.sh` (one pi run), `wiki-index` (rebuilds `wiki/index.md`), `wiki-morning` and `wiki-lint` (scheduled tasks done in small steps), pi's config and system prompt |
 | `vault-template/` | `AGENTS.md` (the wiki's rules for the model), `_tasks/` (one prompt per job type), `_config/` (chat commands, page templates) |
 | `vault-starter/` | Empty lists and review pages for a new vault |
+| `vault-templates/` | Other kinds of wiki, each a `template/` and a `starter/` like the two above: `library` (papers, posts and videos on one field, organised by idea and tool) and `projects` (one page per personal project: status, next steps, files, Claude Code sessions, purchases, links) |
 | `examples/` | systemd units, nftables rules, Docker Compose files for Synapse and Karakeep, cron schedule, vault ACLs, hourly git snapshots |
 | `docs/` | [The job protocol](docs/protocol.md) and [the security model](docs/security.md) |
 

@@ -1,6 +1,10 @@
 ---
 script: wiki-lint
 time-limit-minutes: 30
+# Folders of wiki/ whose pages should be linked from another page, and whose changed pages
+# are reviewed for duplicates and contradictions.
+orphan-folders: topics entities
+review-folders: topics entities trips household
 ---
 # Task: nightly wiki cleanup
 
