@@ -81,12 +81,14 @@ class Jobs:
             return "Can't see the job runner's status."
 
         def label(job: dict) -> str:
+            other = job.get("vault") if job.get("vault") not in (None, self.vault_name) else None
+            if other:  # another wiki's job: its text may be private to that wiki's people
+                return f"[{other}] {job.get('task')}"
             text = job.get("input") or ""
             if job.get("task") == "ingest":
                 text = Path(text).name  # raw/2026/10/2026-10-rye-bread -> the slug
             text = text if len(text) <= 60 else text[:57] + "…"
-            other = job.get("vault") if job.get("vault") not in (None, self.vault_name) else None
-            return (f"[{other}] " if other else "") + f"{job.get('task')} {text}".strip()
+            return f"{job.get('task')} {text}".strip()
 
         def minutes(job: dict) -> str:
             try:

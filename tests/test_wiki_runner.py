@@ -123,3 +123,11 @@ def test_one_queue_serves_several_wikis(tmp_path, monkeypatch):
     assert replies[ids["first"]]["reply"] == str(vaults["family"])   # no name: the first
     assert replies["x"]["status"] == "rejected"
     assert [r["id"] for r in work.results()] == [ids["work"]]       # each sees only its own
+
+
+def test_queue_hides_other_wikis_job_text(tmp_path):
+    (tmp_path / "status.json").write_text(
+        '{"running": {"task": "query", "vault": "work", "input": "salary bands"},'
+        ' "paused": [], "waiting": [{"task": "query", "vault": "home", "input": "eggs?"}]}')
+    text = Jobs(tmp_path, "home").describe_status()
+    assert "salary" not in text and "[work] query" in text and "query eggs?" in text
