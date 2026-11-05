@@ -8,8 +8,8 @@
 #
 # pi gets file tools only (no bash, no MCP, no skills), runs offline,
 # and loads AGENTS.md from the vault as its rules. system-prompt.md (next to this script)
-# replaces pi's own coding-agent system prompt, which speaks of running commands. Its one extension, no-overwrite.ts,
-# lets `write` create files but not replace existing ones. Network and filesystem
+# replaces pi's own coding-agent system prompt, which speaks of running commands. Its one extension, file-guard.ts,
+# keeps every path inside the vault and lets `write` create files but not replace existing ones. Network and filesystem
 # isolation are enforced outside pi: runner/wiki-runner runs this as the wikibot user
 # inside examples/systemd/wiki-runner.service (nftables + IPAddressDeny, vault ACLs).
 set -euo pipefail
@@ -92,7 +92,7 @@ cd "$VAULT"
 exec </dev/null
 exec "$PI" -p \
   "${SESSION_ARGS[@]}" "${MODEL_ARGS[@]}" --no-mcp --no-extensions --no-skills --no-prompt-templates --no-themes \
-  -e "$HERE/no-overwrite.ts" \
+  -e "$HERE/file-guard.ts" \
   "${PROMPT_ARGS[@]}" \
   --no-approve \
   --tools "$TOOLS" \

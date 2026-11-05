@@ -20,7 +20,7 @@ ingest pauses lint. A paused job is resumed (SIGCONT) before any job of its own
 priority or lower starts, so it isn't overtaken by jobs that arrived after it.
 Paused time doesn't count towards the job's time limit. Pausing is safe for the
 vault because existing pages change only through `edit`, which fails if the
-text it replaces has changed meanwhile (see no-overwrite.ts).
+text it replaces has changed meanwhile (see file-guard.ts).
 
 Each job runs on the first llama.cpp server that answers: the providers in pi's
 models.json, in order (one per llama.cpp server). Jobs wait while none do.

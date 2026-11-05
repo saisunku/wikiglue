@@ -169,8 +169,10 @@ queue: a chat question in one wiki pauses lint in another.
   wikiglue posts only its own wiki's results.
 - **Cron:** schedules name the wiki: `wiki-job --vault work --background lint`.
 
-All the vaults are written by the same `wikibot` user, so a source added to one wiki could get
-the model to edit another. Share a runner only between wikis with the same owner.
+Every job stays inside its own vault: `runner/file-guard.ts` refuses any file-tool path
+outside it, so a question asked in one wiki can't read another. That guard is in pi, though,
+not in the kernel: the sandbox gives the one `wikibot` user every vault. Share a runner only
+between wikis with the same owner.
 
 ## Chat commands
 
@@ -252,7 +254,7 @@ minutes. `wiki-runner` handles this with three priorities and preemption.
 - **No stale overwrites:** while a job is paused, the job that pre-empted it may
   change the same pages. Existing pages change only through pi's `edit`, which
   replaces an exact piece of text, so if the page changed underneath, the edit
-  fails and the model re-reads the page. `runner/no-overwrite.ts` stops `write`
+  fails and the model re-reads the page. `runner/file-guard.ts` stops `write`
   from replacing an existing file. Background tasks don't get `write` at all
   (`tools:` in the task's front matter).
 - **Limits:** each task sets `time-limit-minutes:` (default 30); a job that runs over

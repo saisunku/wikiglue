@@ -28,7 +28,10 @@ The limits come from the operating system, not from prompts:
   `run-task.sh` drops anything else a task file asks for. There is no shell, no MCP
   and no web tool, and pi runs offline (`PI_OFFLINE=1`).
 - **No overwrites:** `write` can create files but not replace them
-  (`runner/no-overwrite.ts`), so a confused or hostile run can't blank a page in one call.
+  (`runner/file-guard.ts`), so a confused or hostile run can't blank a page in one call.
+- **Only its own vault:** the same extension refuses paths outside the job's vault,
+  symlinks included. The sandbox alone would let a job read the other jobs' transcripts
+  and, when one runner serves several wikis, the other vaults.
 - **No deletes:** there is no delete tool. Retired pages become `type: redirect`.
 - **Jobs can't name commands:** the runner accepts a task name matching `[a-z0-9_-]+`
   that exists in `_tasks/`, and nothing else.
