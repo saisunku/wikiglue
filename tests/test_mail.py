@@ -116,6 +116,22 @@ async def test_missing_maildir_waits(env, tmp_path):
     assert env["inbox"].missing == {"robin"}
 
 
+async def test_label_created_after_start_is_all_new(env, tmp_path):
+    """A label made after setup: the email labelled before the first download still counts."""
+    maildir = tmp_path / "wikimail" / "alex" / "Work Wiki"
+    user = User("alex", "Alex", "admin", maildir=maildir)
+    await env["inbox"].poll(Source.label(user))                  # not downloaded yet
+    box = mailbox.Maildir(maildir, create=True)
+    box.add(email("Paper to read", "<p1@x>"))
+    await env["inbox"].poll(Source.label(user))
+    [job] = queued(env)
+    src = (env["vault"] / job["input"] / "source.md").read_text()
+    assert 'An email labelled "Work Wiki" in Gmail' in src
+    box.add(email("Another", "<p2@x>"))
+    await env["inbox"].poll(Source.label(user))
+    assert len(queued(env)) == 2
+
+
 def test_plain_text_email_and_bad_charset():
     raw = (b"Subject: Note\r\nFrom: me\r\nContent-Type: text/plain; charset=bogus-8\r\n\r\n"
            b"Pack the \xe9 adapters\r\n")

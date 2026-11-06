@@ -26,7 +26,8 @@ says that address's domain vouched for it (DMARC, or a DKIM signature by that
 domain): a From line alone is easy to forge. Other emails are logged and skipped.
 
 Emails already in a Maildir the first time it's read are recorded and skipped: only
-emails that arrive after setup are ingested.
+emails that arrive after setup are ingested. A Maildir that appears while wikiglue runs
+(a label created after setup) is new, so everything in it is ingested.
 """
 
 from __future__ import annotations
@@ -71,7 +72,6 @@ PANDOC_FORMATS = {
 }
 TEXT_TYPES = {".txt": "text/plain", ".csv": "text/csv", ".md": "text/markdown",
               ".json": "application/json", ".html": "text/html", ".htm": "text/html"}
-LABEL = "Family Wiki"
 # Zero-width and soft-hyphen characters that marketing emails pad their previews with.
 INVISIBLE = re.compile("[­͏​-‏⁠﻿]")
 REPLY_PREFIX = re.compile(r"^\s*((re|fwd?|fw)\s*:\s*)+", re.I)
@@ -219,7 +219,8 @@ class Source:
 
     @classmethod
     def label(cls, user: User) -> "Source":
-        return cls(user.key, user.maildir, f'labelled "{LABEL}" in Gmail', user)
+        # The Maildir folder is named after the label ("Family Wiki", "Work Wiki").
+        return cls(user.key, user.maildir, f'labelled "{user.maildir.name}" in Gmail', user)
 
     @classmethod
     def shared(cls, box: Mailbox) -> "Source":
@@ -314,11 +315,12 @@ class MailInbox:
                 log.warning("mail: no Maildir for %s yet (%s); has mbsync run?", source.key, source.maildir)
                 self.missing.add(source.key)
             return
+        appeared = source.key in self.missing   # created since we started: all of it is new
         self.missing.discard(source.key)
         box = mailbox.Maildir(source.maildir, factory=None, create=False)
         keys = sorted(box.keys())   # Maildir keys start with the delivery time
         baseline = f"mail_baseline:{source.key}"
-        first_time = self.state.get(baseline) is None
+        first_time = self.state.get(baseline) is None and not appeared
         for key in keys:
             with box.get_file(key) as f:
                 data = f.read()
@@ -345,6 +347,8 @@ class MailInbox:
         if first_time:
             self.state.put(baseline, dt.datetime.now().isoformat(timespec="seconds"))
             log.info("mail: %s: %d email(s) there before setup; skipped", source.key, len(keys))
+        elif appeared and self.state.get(baseline) is None:
+            self.state.put(baseline, dt.datetime.now().isoformat(timespec="seconds"))
 
     @staticmethod
     def _message_id(data: bytes) -> str:
