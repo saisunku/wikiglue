@@ -148,7 +148,7 @@
    "type": "stat",
    "title": "Median ingest",
    "id": 4,
-   "description": "",
+   "description": "Each ingest job, counting each part of a long source (ingest-part) as its own job, as in Time per ingest.",
    "datasource": {
     "type": "loki",
     "uid": "loki"
@@ -166,7 +166,7 @@
       "type": "loki",
       "uid": "loki"
      },
-     "expr": "max(quantile_over_time(0.5, {unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"ingest\" | status=\"ok\" | unwrap secs [$__range]))",
+     "expr": "max(quantile_over_time(0.5, {unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=~\"ingest|ingest-part\" | status=\"ok\" | unwrap secs [$__range]))",
      "legendFormat": "",
      "queryType": "instant"
     }
@@ -204,7 +204,7 @@
    "type": "stat",
    "title": "Slowest ingest",
    "id": 5,
-   "description": "",
+   "description": "Each ingest job, counting each part of a long source (ingest-part) as its own job, as in Time per ingest.",
    "datasource": {
     "type": "loki",
     "uid": "loki"
@@ -222,7 +222,7 @@
       "type": "loki",
       "uid": "loki"
      },
-     "expr": "max(max_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=\"ingest\" | unwrap secs [$__range]))",
+     "expr": "max(max_over_time({unit=\"wiki-runner.service\"} |~ `^(ok|failed|timeout) \\S+ \\S+ after ` | regexp `^(?P<status>ok|failed|timeout) \\S+ (?:(?P<w>[\\w-]+)/)?(?P<task>[\\w-]+) after (?P<secs>\\d+)s` | label_format wiki=`{{ or .w \"default\" }}` | wiki=~\"$wiki\" | task=~\"ingest|ingest-part\" | unwrap secs [$__range]))",
      "legendFormat": "",
      "queryType": "instant"
     }
@@ -309,7 +309,7 @@
       "lastNotNull"
      ],
      "fields": "",
-     "values": false
+     "values": true
     },
     "colorMode": "background",
     "graphMode": "none",
@@ -1202,7 +1202,7 @@
       "lastNotNull"
      ],
      "fields": "",
-     "values": false
+     "values": true
     },
     "colorMode": "background",
     "graphMode": "none",
