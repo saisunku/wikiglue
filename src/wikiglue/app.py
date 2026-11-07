@@ -104,8 +104,10 @@ async def post_result(result: dict, state: State, dispatcher: Dispatcher, transp
 
     # The model asks something it can't work out (trip.md: which year a booking is for):
     # lines starting "Question:" go to the announce room when nobody saw the reply in chat.
+    # Only real questions, which say how to answer them; the model sometimes starts a
+    # remark with "Question:" too.
     questions = [line.strip(" *-") for line in reply.splitlines()
-                 if line.strip(" *-").startswith("Question:")]
+                 if line.strip(" *-").startswith("Question:") and "Answer with" in line]
     if questions and not sent and status == "ok":
         room_id = state.get("announce_room")
         if room_id:

@@ -58,4 +58,4 @@ Source folder: `$INPUT`
    `- <today> [[raw/YYYY/MM/<slug>/source|<slug>]] — <what's missing, e.g. "6 trait ratings shown only as scale ends">`
 
 Reply with the list of pages created/updated, and any `Question:` line from `_tasks/trip.md`
-as it is (it's posted to the family chat).
+as it is (it's posted to the family chat). Start no other line with `Question:`.

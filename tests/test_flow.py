@@ -292,7 +292,8 @@ async def test_results_are_posted_once(env):
         {"id": "j6", "task": "ingest", "status": "ok", "meta": {"user": "alex"},   # emailed in
          "reply": "- sources/y.md — created\n**Question: which year is the 1 Aug flight "
                   "(sources/y)? Answer with \"trip: <year> for sources/y\"**"},
-        {"id": "j7", "task": "ingest", "status": "ok", "reply": "- sources/z.md — created"},
+        {"id": "j7", "task": "ingest", "status": "ok", "reply": "- sources/z.md — created\n"
+         "Question: This source is **part 1 of 3**; only part 1's facts were folded in."},  # a remark
     ]
     for r in results:
         (done / f"{r['id']}.json").write_text(json.dumps(r))
