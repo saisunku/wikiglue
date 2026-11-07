@@ -13,7 +13,7 @@ in steps, so the model never has to hold the whole wiki in mind:
 
 1. Finds, without the model: links in `wiki/` that point at nothing, pages missing `title:` or
    `summary:`, front matter the website can't read, topic and entity pages nothing links to, and
-   rows in `wiki/credits.md` and `wiki/returns.md` past their date.
+   rows in `wiki/credits.md`, `wiki/returns.md` and `wiki/nearby.md` past their date.
 2. Runs `_tasks/lint-fix.md` on those, about ten at a time.
 3. Runs `_tasks/lint-review.md` on the pages changed since the last lint (duplicates,
    contradictions) and pages not updated in over a year (stale claims), a few at a time.

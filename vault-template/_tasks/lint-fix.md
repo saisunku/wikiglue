@@ -33,7 +33,8 @@ find those itself.
   the most relevant page (and one back, if the orphan has no `Related` section linking that page).
 - **A credits row past its Expires date.** Delete the row and add a line under "Used or expired",
   as the page's comment there says. **A returns row past its Return by date:** move it under
-  "Done" as "past return-by date".
+  "Done" as "past return-by date". **A nearby events row whose Date has passed** (the last
+  date, for one that runs several days): delete the row and add a line under "Past events".
 
 Pages in `wiki/summaries/` keep their `sources:` list; fix only their links and front matter.
 Don't edit `wiki/log.md`: the lint writes one entry for the night from your reply.

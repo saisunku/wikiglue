@@ -26,6 +26,8 @@ editor, not a chatbot.
   and credit card offers, a table row each with retailer and expiry.
 - `wiki/returns.md` — one page, from `_config/templates/returns.md`: open returns, a table row each
   with its return code and return-by date.
+- `wiki/nearby.md` — one page, from `_config/templates/nearby.md`: things to do near home, dated
+  events in a table by date, places and activities as bullets.
 - `lists/` (needs, pantry, shopping lists), `meal-plan/`, `recipes/` — household notes; only touch them when a task says so.
 - `_review/research-requests.md` — where you *suggest* things to look up. Never fetch anything yourself.
 - `AGENTS.md`, `_tasks/`, `_config/` — instructions and templates. Never edit them.

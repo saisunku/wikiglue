@@ -65,6 +65,17 @@ def test_finds_problems_without_the_model(tmp_path):
     assert wl.changed_since_last_lint(v, pages, TODAY) == ["wiki/topics/bread.md"]
 
 
+def test_nearby_events_pass_on_their_last_day(tmp_path):
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "wiki" / "nearby.md").write_text(
+        "## Events\n\n| Date | Event | Where | Cost and tickets | Source |\n|---|---|---|---|---|\n"
+        "| 2026-10-30 to 2026-11-01 | Fall fair | Fairgrounds | $10 | [[sources/a]] |\n"
+        "| 2026-11-01 to 2026-11-09 | Lantern walk | Park | free | [[sources/b]] |\n"
+        "| 2026-11-20 | Concert | Hall | $30 | [[sources/c]] |\n")
+    rows = wl.past_rows(tmp_path, date(2026, 11, 5))
+    assert [r for _, r in rows] == ["Date 2026-11-01 has passed: Fall fair | Fairgrounds | $10 | [[sources/a]]"]
+
+
 def test_batches_keep_a_page_together():
     probs = [("a", "1"), ("a", "2"), ("b", "3"), ("c", "4"), ("c", "5")]
     assert [b.count("  - ") for b in wl.batches(probs, 3)] == [3, 2]

@@ -47,6 +47,12 @@ Source folder: `$INPUT`
    `wiki/returns.md` (create it from `_config/templates/returns.md` if it doesn't exist), cited,
    sorted by Return by like credits. A drop-off receipt or refund for one already there: delete its
    row and add a line under "Done", as the page's comments say.
+5f. An event, activity or place to visit near home (where the family lives, in
+   `_config/family_data.md`, or a day trip from it): a festival, concert, show, market, class,
+   exhibition, park, hike, museum, attraction. It goes on `wiki/nearby.md` (create it from
+   `_config/templates/nearby.md` if it doesn't exist), cited: a dated event as a row in Events,
+   sorted by Date; anything undated under Places and activities. One already there: update it.
+   Do this as well as steps 4–5, not instead. An event or place far from home doesn't go here.
 6. Give each page you created a `summary:` in its front matter (one line, for the index), and
    update the `summary:` of pages whose scope changed. Don't edit `wiki/index.md`: it's generated.
 7. Add to the top of `wiki/log.md`, right under `# Log`: `## <today> ingest <slug>` then one bullet per page touched.

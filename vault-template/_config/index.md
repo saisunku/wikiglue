@@ -29,6 +29,7 @@ title and summary:
 - [[lists/pantry|Pantry]] — staples and what's running low
 <!-- pages: type=credits -->
 <!-- pages: type=returns -->
+<!-- pages: type=nearby -->
 
 ## Upcoming trips
 
