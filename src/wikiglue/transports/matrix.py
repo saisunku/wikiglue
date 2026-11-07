@@ -250,10 +250,13 @@ class MatrixTransport:
     async def _reply(self, evt: MessageEvent, text: str) -> None:
         await self.send(evt.room_id, text, reply_to=evt.event_id)
 
-    async def send(self, room_id: str, text: str, reply_to: str | None = None) -> None:
+    async def send(self, room_id: str, text: str, reply_to: str | None = None,
+                   notify: bool = False) -> None:
         """Post a notice; as a reply when reply_to is given. Encrypted automatically
-        when the room is encrypted."""
-        content = TextMessageEventContent(msgtype=MessageType.NOTICE, body=text)
+        when the room is encrypted. Matrix's default push rules mute notices, so
+        notify=True posts an ordinary message instead, which phones notify about."""
+        msgtype = MessageType.TEXT if notify else MessageType.NOTICE
+        content = TextMessageEventContent(msgtype=msgtype, body=text)
         if reply_to:
             content.set_reply(reply_to)
         await self.client.send_message(room_id, content)

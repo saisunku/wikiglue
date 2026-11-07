@@ -4,6 +4,8 @@
 - the Karakeep inbox (new bookmarks -> raw/ -> ingest job)
 - the mail inbox (emails labelled "Family Wiki" -> raw/ -> ingest job)
 - the results poster (finished jobs -> replies, scheduled lists -> announce room)
+  Replies are Matrix notices (no phone notification); posts to the announce room nobody
+  asked for just then (morning, shopping, digest, questions, approvals) notify.
 - the approvals watcher (research requests ticked in Obsidian -> fetched)
 
 If any part crashes the whole service exits and systemd restarts it.
@@ -95,7 +97,7 @@ async def post_result(result: dict, state: State, dispatcher: Dispatcher, transp
     elif result.get("task") in dispatcher.commands.announce:  # scheduled: shopping, digest
         room_id = state.get("announce_room")
         if room_id and status == "ok":
-            await transport.send(room_id, reply)
+            await transport.send(room_id, reply, notify=True)
         elif not room_id:
             log.info("results: %s finished but no announce room is set (send 'announce')",
                      result.get("task"))
@@ -107,7 +109,7 @@ async def post_result(result: dict, state: State, dispatcher: Dispatcher, transp
     if questions and not sent and status == "ok":
         room_id = state.get("announce_room")
         if room_id:
-            await transport.send(room_id, "\n".join(questions))
+            await transport.send(room_id, "\n".join(questions), notify=True)
         else:
             log.info("results: %s asked a question but no announce room is set", result.get("id"))
 
@@ -127,5 +129,5 @@ async def watch_approvals(config: Config, state: State, dispatcher: Dispatcher,
         for text in messages:
             log.info("approvals: %s", text)
             if room_id:
-                await transport.send(room_id, text)
+                await transport.send(room_id, text, notify=True)
         await asyncio.sleep(APPROVALS_POLL_SECONDS)

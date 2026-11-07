@@ -97,8 +97,9 @@ class FakeTransport:
     def __init__(self):
         self.sent = []
 
-    async def send(self, room_id, text, reply_to=None):
+    async def send(self, room_id, text, reply_to=None, notify=False):
         self.sent.append((room_id, text, reply_to))
+        self.notified = getattr(self, "notified", []) + [notify]
 
 
 @pytest.fixture
@@ -305,6 +306,7 @@ async def test_results_are_posted_once(env):
         ("!announce", 'Question: which year is the 1 Aug flight (sources/y)? '
                       'Answer with "trip: <year> for sources/y"', None),
     ]
+    assert t.notified == [False, False, True, False, True]   # only the announce room notifies
     assert env["state"].get_notify("bm7") is None
 
 
